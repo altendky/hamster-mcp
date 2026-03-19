@@ -46,8 +46,10 @@ serialization logic.
 
 ### Types
 
-**`JsonRpcId`** --- type alias `int | str`.  JSON-RPC allows integer or
-string request IDs.
+**`JsonRpcId`** --- type alias `int | float | str | None`.  JSON-RPC
+allows integer, number, string, or null request IDs.  Fractional numbers
+are discouraged (SHOULD NOT) but valid.  `None` represents a null ID
+(used in error responses when the original ID could not be determined).
 
 **`TextContent`** --- frozen dataclass.
 
@@ -66,6 +68,10 @@ The `"type": "text"` wire-format key is added by `jsonrpc.py`.
 | `mime_type` | `str` |
 
 **`Content`** --- type alias `TextContent | ImageContent`.
+Intentionally incomplete --- MCP also defines `AudioContent` and
+`EmbeddedResource` content types, deferred until needed (see Q014).
+The implementation should include a comment on this union noting the
+omission.
 
 **`Tool`** --- frozen dataclass.
 
@@ -173,6 +179,15 @@ serialization.
 | `method` | `str` |
 | `params` | `dict[str, object]` |
 
+**`JsonRpcResponse`** --- frozen dataclass.
+Received when a client sends a JSON-RPC response object (has `result` or
+`error` instead of `method`).  Since the server never sends requests to
+clients, these are unexpected.  Treated as `INVALID_REQUEST`.
+
+| Field | Type |
+| --- | --- |
+| `response` | `dict[str, object]` (pre-built JSON-RPC error response) |
+
 **`JsonRpcParseError`** --- frozen dataclass.
 
 | Field | Type |
@@ -180,7 +195,7 @@ serialization.
 | `response` | `dict[str, object]` (pre-built JSON-RPC error response) |
 
 **`ParsedMessage`** --- type alias
-`JsonRpcRequest | JsonRpcNotification | JsonRpcParseError`.
+`JsonRpcRequest | JsonRpcNotification | JsonRpcResponse | JsonRpcParseError`.
 
 ### Constants
 
@@ -191,25 +206,44 @@ METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 
-MCP_PROTOCOL_VERSION = "2025-03-26"
+SUPPORTED_VERSIONS: tuple[str, ...] = ("2025-03-26",)
+MCP_PROTOCOL_VERSION = SUPPORTED_VERSIONS[0]
 ```
 
 ### Parsing
 
 **`parse_message(raw: dict[str, object]) -> ParsedMessage`**
 
+Parses a single JSON-RPC message object.
+
 Validation rules:
 
+- Has `result` or `error` key (no `method`) --- `JsonRpcResponse`
+  (client sent a response object; rejected as `INVALID_REQUEST`).
 - `jsonrpc` must be `"2.0"` --- `INVALID_REQUEST` if missing/wrong.
 - `method` must be a string --- `INVALID_REQUEST` if missing/wrong type.
 - `params` must be a dict if present (MCP uses only object params) ---
   `INVALID_REQUEST` if wrong type; defaults to `{}` if absent.
 - `params: null` treated as `{}`.
-- Has `id` (int or str) --- `JsonRpcRequest`; no `id` ---
-  `JsonRpcNotification`.
-- Non-int/non-str `id` --- `JsonRpcParseError`.
+- Has `id` (int, float, str, or null) --- `JsonRpcRequest`; no `id`
+  key --- `JsonRpcNotification`.
+- `id` with non-number/non-string type (bool, array, object) ---
+  `JsonRpcParseError`.
 - Error response `id` is `null` when original ID could not be extracted,
   otherwise carries the extracted ID.
+
+**`parse_batch(body: object) -> list[ParsedMessage] | ParsedMessage`**
+
+Handles the top-level JSON value after `json.loads`:
+
+- If `body` is a dict --- delegate to `parse_message()`, return single
+  result.
+- If `body` is a list --- empty list is `JsonRpcParseError`
+  (`INVALID_REQUEST`).  Non-empty list: call `parse_message()` on each
+  element (non-dict elements produce `JsonRpcParseError` per element).
+  Return list of results.
+- Otherwise (string, number, null, bool) --- `JsonRpcParseError`
+  (`INVALID_REQUEST`).
 
 ### Response building
 
@@ -233,21 +267,45 @@ Validation rules:
 
 | Function | Purpose |
 | --- | --- |
-| `build_initialize_response(request_id, server_info, capabilities)` | Full init response with `protocolVersion` |
+| `build_initialize_response(request_id, server_info, capabilities, protocol_version)` | Full init response with negotiated `protocolVersion` |
 | `build_tool_list_response(request_id, tools: Sequence[Tool])` | Response with serialized tool array (no pagination --- all tools in one response; cursor support deferred) |
 | `build_tool_result_response(request_id, result: CallToolResult)` | Response with serialized call tool result |
 
 ### Tests --- `_tests/test_jsonrpc.py`
 
-**Parsing:**
+**`parse_message` --- single messages:**
 
 - Valid request with id, method, params --- `JsonRpcRequest`.
 - Valid notification (no id) --- `JsonRpcNotification`.
-- Missing `jsonrpc` / wrong version / missing `method` / non-string
-  method / array params / non-int non-str id --- all `JsonRpcParseError`.
+- Response object (has `result`, no `method`) --- `JsonRpcResponse`.
+- Missing `jsonrpc` / wrong version (`"1.0"`) / missing `method` /
+  non-string method / array params / string params / bool id / object id
+  / empty dict `{}` --- all `JsonRpcParseError`.
 - Missing params defaults to `{}`.
 - `params: null` treated as `{}`.
+- Extra fields in message (e.g. `"extra": "bar"`) --- parsed
+  successfully, extra fields ignored.
 - Error response ID is `null` when original could not be extracted.
+
+**`parse_message` --- id edge cases:**
+
+- `id: 0` --- valid `JsonRpcRequest` (falsy but valid).
+- `id: ""` --- valid `JsonRpcRequest` (empty string is valid).
+- `id: null` --- valid `JsonRpcRequest` with `id=None`.
+- `id: 1.5` --- valid `JsonRpcRequest` (fractional discouraged but
+  allowed by spec).
+- `id: -1` --- valid `JsonRpcRequest`.
+- Very large integer --- valid `JsonRpcRequest`.
+
+**`parse_batch` --- batch handling:**
+
+- Single dict --- delegates to `parse_message`, returns single result.
+- Array of valid requests --- returns list of `ParsedMessage`.
+- Empty array `[]` --- `JsonRpcParseError` (`INVALID_REQUEST`).
+- Array with non-dict element --- per-element `JsonRpcParseError`.
+- Mixed array (requests + notifications) --- correct types per element.
+- Non-dict non-array body (string, number, null, bool) ---
+  `JsonRpcParseError`.
 
 **Serialization:**
 
@@ -317,8 +375,8 @@ what happened --- the transport's match/case is trivial.
 
 Covers all non-effect responses: initialization (200 + `Mcp-Session-Id`
 header), notification acknowledgment (202, no body), tool list (200),
-HTTP-level errors (405/406/415), and JSON-RPC / protocol errors
-(400/404).
+HTTP-level errors (405 for unsupported GET/SSE, 406, 415, 503 for
+unloaded), and JSON-RPC / protocol errors (400/404).
 
 **`RunEffects`** --- frozen dataclass.
 
@@ -504,33 +562,108 @@ JSON-RPC parsing, session routing, and response building all live here.
 ### `MCPServerSession`
 
 Per-session state machine.  Internal to the core --- not called directly
-by the transport.
+by the transport.  Only `SessionManager` interacts with sessions.
 
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
     IDLE --> INITIALIZING : initialize request
     INITIALIZING --> ACTIVE : notifications/initialized
-    ACTIVE --> ACTIVE : tools/list, tools/call, notifications
+    ACTIVE --> ACTIVE : tools/list, tools/call, ping, notifications
     ACTIVE --> CLOSED : close()
     CLOSED --> [*]
 ```
 
-State routing (internal results are wrapped by the manager into
-`SendResponse` / `RunEffects` with appropriate HTTP status and headers):
+#### Internal result types
+
+The session returns internal result types that the manager wraps into
+`SendResponse` / `RunEffects` with appropriate HTTP status and headers.
+
+**`SessionResponse`** --- frozen dataclass.
+
+| Field | Type |
+| --- | --- |
+| `body` | `dict[str, object]` |
+
+A JSON-RPC response body to send to the client.
+
+**`SessionAck`** --- frozen dataclass, no fields.
+
+A notification was processed.  Manager wraps as `SendResponse(202)`.
+
+**`SessionToolCall`** --- frozen dataclass.
+
+| Field | Type |
+| --- | --- |
+| `request_id` | `JsonRpcId` |
+| `effect` | `ToolEffect` |
+
+A tool call needs effect dispatch.  Manager wraps as `RunEffects`.
+
+**`SessionError`** --- frozen dataclass.
+
+| Field | Type |
+| --- | --- |
+| `code` | `int` |
+| `message` | `str` |
+| `request_id` | `JsonRpcId \| None` |
+
+A JSON-RPC error.  Manager builds the error response and wraps as
+`SendResponse(200)`.
+
+**`SessionResult`** --- type alias
+`SessionResponse | SessionAck | SessionToolCall | SessionError`.
+
+#### API
+
+```python
+class MCPServerSession:
+    def handle(
+        self,
+        message: JsonRpcRequest | JsonRpcNotification,
+    ) -> SessionResult: ...
+
+    def update_tools(self, tools: tuple[Tool, ...]) -> None: ...
+```
+
+`handle()` is the single entry point.  The manager calls it after
+parsing and routing.  The session dispatches based on its current state
+and the message's method.
+
+`update_tools()` replaces the session's tool list.  Called by the
+manager when `SessionManager.update_tools()` propagates changes.
+
+#### State routing
 
 | State | Method | Result |
 | --- | --- | --- |
-| IDLE | `initialize` | -> INITIALIZING, init response |
-| IDLE | anything else | error |
-| INITIALIZING | `notifications/initialized` | -> ACTIVE, ack |
-| INITIALIZING | anything else | error |
-| ACTIVE | `tools/list` | tool list response |
-| ACTIVE | `tools/call` (valid tool) | tool call effect |
-| ACTIVE | `tools/call` (unknown tool) | error (`INVALID_PARAMS`) |
-| ACTIVE | any notification | ack |
-| ACTIVE | unknown method request | error (`METHOD_NOT_FOUND`) |
-| CLOSED | anything | error |
+| IDLE | `initialize` | -> INITIALIZING, `SessionResponse` with init body |
+| IDLE | `ping` | `SessionResponse` with `{"result": {}}` |
+| IDLE | anything else | `SessionError` (`INVALID_REQUEST`) |
+| INITIALIZING | `notifications/initialized` | -> ACTIVE, `SessionAck` |
+| INITIALIZING | `ping` | `SessionResponse` with `{"result": {}}` |
+| INITIALIZING | anything else | `SessionError` (`INVALID_REQUEST`) |
+| ACTIVE | `ping` | `SessionResponse` with `{"result": {}}` |
+| ACTIVE | `tools/list` | `SessionResponse` with tool list body |
+| ACTIVE | `tools/call` (valid tool) | `SessionToolCall` with effect |
+| ACTIVE | `tools/call` (unknown tool) | `SessionError` (`INVALID_PARAMS`) |
+| ACTIVE | any notification | `SessionAck` |
+| ACTIVE | unknown method request | `SessionError` (`METHOD_NOT_FOUND`) |
+| CLOSED | anything | `SessionError` (`INVALID_REQUEST`) |
+
+#### Version negotiation
+
+On `initialize`, the session extracts `params["protocolVersion"]` from
+the request.  If missing, returns `SessionError` (`INVALID_PARAMS`,
+`"Missing protocolVersion"`).  The session checks the requested version
+against `SUPPORTED_VERSIONS`:
+
+- If found --- respond with that version.
+- If not found --- respond with `MCP_PROTOCOL_VERSION` (the server's
+  preferred version).  The client decides whether to continue.
+
+The negotiated version is stored on the session (for future use) and
+passed to `build_initialize_response()`.
 
 ### `SessionManager`
 
@@ -543,47 +676,100 @@ class SessionManager:
         server_info: ServerInfo,
         idle_timeout: float = 1800.0,
         session_id_factory: Callable[[], str] = ...,
+        debounce_delay: float = 0.5,
     ): ...
 ```
+
+Default `session_id_factory` is `secrets.token_hex` (produces
+cryptographically random hex strings).  Tests inject a deterministic
+factory.
+
+Sessions are stored internally as `dict[str, MCPServerSession]` keyed
+by session ID, with a parallel `dict[str, float]` for last-activity
+timestamps.
+
+`SessionManager` is designed for single-event-loop concurrency.
+Multiple coroutines may call `receive_request()` concurrently (asyncio
+cooperative scheduling), but no thread safety is required.
+
+**`WakeupToken`** --- type alias `object`.  Opaque token returned by
+the core in `WakeupRequest`.  The I/O layer hands it back to the core
+on wakeup without interpreting it.
+
+**`WakeupRequest`** --- frozen dataclass.
+
+| Field | Type |
+| --- | --- |
+| `deadline` | `float` |
+| `token` | `WakeupToken` |
 
 | Method | Signature | Purpose |
 | --- | --- | --- |
 | `update_tools` | `(tools: tuple[Tool, ...]) -> None` | Replace tool cache, propagate to all sessions |
-| `receive_request` | `(request: IncomingRequest, now: float) -> ReceiveResult` | Full HTTP-to-protocol pipeline |
-| `build_effect_response` | `(request_id: JsonRpcId, result: CallToolResult) -> SendResponse` | Build HTTP response after effect dispatch completes |
-| `check_timeouts` | `(now: float) -> tuple[list[SessionExpired], float \| None]` | Expire idle sessions, remove them |
+| `receive_request` | `(request: IncomingRequest, now: float) -> ReceiveResult \| list[ReceiveResult]` | Full HTTP-to-protocol pipeline; returns list for batch requests |
+| `build_effect_response` | `(request_id: JsonRpcId, result: CallToolResult) -> SendResponse` | Build HTTP response after effect dispatch completes (session-independent) |
+| `notify_services_changed` | `(now: float) -> None` | Record that services changed; starts debounce timer |
+| `check_wakeups` | `(now: float) -> tuple[list[SessionExpired], bool, WakeupRequest \| None]` | Expire idle sessions, check tool regeneration debounce, compute next wakeup |
+| `handle_wakeup` | `(token: WakeupToken, now: float) -> None` | Core receives its own token back on wakeup (reserved for future use) |
 | `close_session` | `(session_id: str) -> bool` | Explicitly close a session |
 
 **`receive_request()` logic:**
 
 1. Check `http_method`:
-    - `GET` -> `SendResponse(405)`.
+    - `GET` -> `SendResponse(405)`.  Intentionally unsupported in v1;
+      GET becomes the SSE endpoint when streaming is added (see Q012).
     - `DELETE` -> extract session ID, close session,
       `SendResponse(200)` or `SendResponse(404)`.
     - `POST` -> continue below.
-2. Validate `Content-Type` header -> `SendResponse(415)` if not
-   `application/json`.
-3. Validate `Accept` header -> `SendResponse(406)` if missing
-   `application/json`.
-4. Validate `Origin` header -> `SendResponse(403)` for DNS rebinding.
+2. Validate `Content-Type` media type -> `SendResponse(415)` if not
+   `application/json`.  Parameters (e.g. `; charset=utf-8`) are
+   ignored; only the media type portion is checked.
+3. Validate `Accept` header -> `SendResponse(406)` if not compatible
+   with `application/json`.  Accepts `application/json`,
+   `application/*`, and `*/*` (see Q011).
+4. Validate `Origin` header -> deferred (see Q010).  Currently a
+   no-op placeholder.
 5. Parse JSON body (`json.loads`) -> `SendResponse(400)` with
    `PARSE_ERROR` on failure.
-6. `parse_message()` (JSON-RPC validation) -> `SendResponse(400)` on
-   `JsonRpcParseError`.
+6. `parse_batch(body)` (JSON-RPC validation):
+    - Single message: process as before.
+    - Batch (list): process each message, collect results.  Omit
+      responses for notifications.  If all messages are notifications,
+      return `SendResponse(202)`.  Otherwise return list of response
+      bodies as a JSON array.
+    - `JsonRpcParseError` / `JsonRpcResponse` -> `SendResponse(400)`.
 7. Route by `request.session_id`:
     - `None` + `initialize` -> create session via factory, delegate.
+      `initialize` MUST NOT appear in a batch.
     - `None` + anything else -> `SendResponse(400)`.
     - Unknown session ID -> `SendResponse(404)`.
     - Known session ID -> update last-activity, delegate to session.
-8. Wrap session result into `SendResponse` or `RunEffects` with
+8. Wrap `SessionResult` into `SendResponse` or `RunEffects` with
    appropriate status, headers (`Content-Type`, `Mcp-Session-Id`), and
    body.
 
-**`check_timeouts()` logic:**
+**`build_effect_response()`:**
+
+Session-independent.  Takes a `request_id` and `CallToolResult`, builds
+the JSON-RPC response using `build_tool_result_response()`, and wraps in
+`SendResponse(200)`.  Can be called even if the session has expired or
+been closed --- the response is built without consulting session state.
+The transport holds the session ID from the original request and includes
+it in response headers.
+
+**`check_wakeups()` logic:**
 
 - Expire sessions where `now - last_activity >= idle_timeout`.
 - Remove expired sessions from internal storage.
-- Return `(expired_list, next_wakeup_time)` or `None` if no sessions.
+- Check if tool regeneration debounce deadline has passed.
+- Return `(expired_list, should_regenerate_tools, next_wakeup)`.
+- `next_wakeup` is `None` if no sessions and no pending debounce.
+
+The I/O layer sleeps until the `WakeupRequest.deadline`, then calls
+`check_wakeups()`.  When `should_regenerate_tools` is `True`, the
+component calls `async_services()`, generates tools, and calls
+`update_tools()`.  The generic `WakeupRequest` / `WakeupToken`
+mechanism allows future wakeup reasons without changing the I/O layer.
 
 ### Tests --- `_tests/test_session.py`
 
@@ -598,16 +784,46 @@ no mocks.  The entire protocol is testable with plain data.
 **HTTP-level validation:**
 
 - Wrong `Content-Type` -> `SendResponse(415)`.
+- `Content-Type` with parameters (e.g. `application/json; charset=utf-8`)
+  -> accepted.
 - Missing `Accept` -> `SendResponse(406)`.
+- `Accept: */*` -> accepted.
+- `Accept: application/*` -> accepted.
 - Malformed JSON body -> `SendResponse(400)` with `PARSE_ERROR`.
+- Empty body `b""` -> `SendResponse(400)` with `PARSE_ERROR`.
+- Valid JSON that's not an object or array (e.g. `b'"hello"'`, `b"42"`)
+  -> `SendResponse(400)` with `INVALID_REQUEST`.
 - `GET` request -> `SendResponse(405)`.
-- `DELETE` with valid/unknown session.
+- `DELETE` with valid session -> `SendResponse(200)`.
+- `DELETE` with unknown session -> `SendResponse(404)`.
+- `DELETE` with no session ID -> `SendResponse(400)`.
+
+**Batch requests:**
+
+- Array of two requests -> list of two responses.
+- Array with mix of requests and notifications -> responses for requests
+  only (notifications omitted).
+- Array of only notifications -> `SendResponse(202)`.
+- Empty array -> `SendResponse(400)` with `INVALID_REQUEST`.
+- `initialize` in batch -> `SendResponse(400)`.
 
 **State machine:**
 
 - tools/list before init -> error response.
 - initialize when active -> error response.
 - Request to closed session -> error response.
+- `ping` in IDLE -> success response `{"result": {}}`.
+- `ping` in INITIALIZING -> success response `{"result": {}}`.
+- `ping` in ACTIVE -> success response `{"result": {}}`.
+- `ping` in CLOSED -> error response.
+
+**Version negotiation:**
+
+- `initialize` with matching `protocolVersion` -> response echoes same
+  version.
+- `initialize` with unknown `protocolVersion` -> response contains
+  server's preferred version.
+- `initialize` without `protocolVersion` -> error (`INVALID_PARAMS`).
 
 **Routing:**
 
@@ -615,6 +831,7 @@ no mocks.  The entire protocol is testable with plain data.
   `Mcp-Session-Id` header.
 - No session ID + non-init -> `SendResponse(400)`.
 - Unknown session ID -> `SendResponse(404)`.
+- Multiple independent sessions operate without interference.
 
 **Tool management:**
 
@@ -626,19 +843,31 @@ no mocks.  The entire protocol is testable with plain data.
 
 - `build_effect_response()` produces `SendResponse(200)` with
   serialized `CallToolResult`.
+- `build_effect_response()` succeeds even after session has expired
+  (session-independent).
 
-**Timeouts:**
+**Wakeups:**
 
-- No sessions -> `([], None)`.
+- No sessions, no pending debounce -> `([], False, None)`.
 - Within timeout -> not expired.
 - Past timeout -> `SessionExpired`, session removed.
 - Activity push-back resets timeout.
 - Multiple sessions -> correct next wakeup.
+- `notify_services_changed()` -> `should_regenerate_tools` becomes
+  `True` after debounce delay.
+- Rapid successive `notify_services_changed()` calls -> debounce resets,
+  only one regeneration.
+
+**Concurrency:**
+
+- `receive_request()` returns `RunEffects`, then another
+  `receive_request()` on same session before `build_effect_response()`
+  -> both succeed (session doesn't track in-flight requests).
 
 **Deterministic testing:**
 
 - Injected `session_id_factory` -> predictable IDs.
-- Injected `now` -> deterministic timeouts.
+- Injected `now` -> deterministic timeouts and debounce.
 
 ---
 
@@ -677,10 +906,20 @@ class AiohttpMCPTransport:
     ) -> None: ...
 ```
 
+**Loaded flag:**
+
+The transport has a `_loaded: bool` flag, initially `True`.  On entry
+unload, call `transport.shutdown()` which sets `_loaded = False`.
+`handle()` checks this flag first and returns `web.Response(status=503)`
+(Service Unavailable) when unloaded.  This is necessary because
+`HomeAssistantView` routes cannot be unregistered from HA's HTTP server.
+
 **Single HTTP handler for all methods:**
 
 ```python
 async def handle(self, request: web.Request) -> web.Response:
+    if not self._loaded:
+        return web.Response(status=503)
     body = await request.read()
     incoming = IncomingRequest(
         http_method=request.method,
@@ -701,6 +940,9 @@ async def handle(self, request: web.Request) -> web.Response:
             resp = self._manager.build_effect_response(rid, call_result)
             return web.json_response(
                 data=resp.body, status=resp.status, headers=resp.headers)
+        case list() as batch_results:
+            # Batch response: collect response bodies into JSON array
+            ...
 ```
 
 ### Effect dispatch loop
@@ -719,12 +961,21 @@ async def _run_effects(self, effect: ToolEffect) -> CallToolResult:
                 current = resume(cont, io_result)
 ```
 
-### Timeout wakeup loop
+### Wakeup loop
 
-- Background `asyncio.Task`.
-- When no sessions: waits on `asyncio.Event`.
-- When sessions exist: sleeps until next timeout.
-- `notify_session_created()` wakes the loop.
+Single background `asyncio.Task` that manages all timed events.
+
+- Calls `manager.check_wakeups(now)` to get expired sessions,
+  tool-regeneration flag, and next `WakeupRequest`.
+- For each `SessionExpired`: logs and cleans up.
+- If `should_regenerate_tools`: calls back to the component to
+  regenerate (via a callback passed at construction).
+- If `WakeupRequest` is `None`: waits on `asyncio.Event` (no sessions,
+  no pending debounce).
+- Otherwise: sleeps until `wakeup.deadline`.
+- `notify_activity()` sets the event to wake the loop early (called
+  after `receive_request()` creates a new session or after
+  `notify_services_changed()`).
 
 ### Tests --- `_tests/test_aiohttp.py`
 
@@ -742,13 +993,17 @@ effect dispatch.
 - Complete flow through HTTP: init -> ack -> tools/list -> tools/call
   -> response.
 - `IncomingRequest` construction: verify the transport correctly
-  extracts headers and body from aiohttp requests.
+  extracts headers and body from aiohttp requests.  Note: aiohttp's
+  `request.content_type` strips parameters (returns `"application/json"`
+  even if header was `application/json; charset=utf-8`).
 - Effect dispatch: `Done` returns immediately, `ServiceCall` calls
   handler then resumes.
 - Effect handler exception: uncaught error produces a proper error
   response, not an opaque 500.
-- Timeout wakeup loop: sleeps, wakes on new session, expires idle
-  sessions.
+- Loaded flag: requests after `shutdown()` -> 503.
+- Wakeup loop: sleeps, wakes on new session, wakes on
+  `notify_activity()`, expires idle sessions, triggers tool
+  regeneration callback after debounce.
 
 ---
 
@@ -823,12 +1078,16 @@ async def execute_service_call(self, domain, service, data):
         return ServiceCallResult(success=False,
             error=f"Home Assistant error: {err}")
     except Exception as err:
+        _LOGGER.exception("Unexpected error executing %s.%s", domain, service)
         return ServiceCallResult(success=False,
             error=f"Unexpected error: {type(err).__name__}: {err}")
 ```
 
 Resolves Q006 --- catch known HA exception types, format human-readable
-messages for the LLM.
+messages for the LLM.  The catch-all `except Exception` logs the full
+traceback for the operator while returning a formatted message to the
+LLM.  `asyncio.CancelledError` is not caught (it's a `BaseException`
+subclass in Python 3.9+) and propagates correctly for task cancellation.
 
 **`HamsterMCPView`** --- `HomeAssistantView` subclass:
 
@@ -837,29 +1096,57 @@ class HamsterMCPView(HomeAssistantView):
     url = "/api/hamster"
     name = "api:hamster"
     requires_auth = True
+
+    async def post(self, request):
+        return await self._transport.handle(request)
+
+    async def get(self, request):
+        return await self._transport.handle(request)
+
+    async def delete(self, request):
+        return await self._transport.handle(request)
 ```
 
-Pure delegation to `AiohttpMCPTransport`.  Auth handled by
-`requires_auth = True`.
+`HomeAssistantView` expects separate `get()`, `post()`, `delete()`
+methods.  Each delegates to the transport's single `handle()` method.
+Auth handled by `requires_auth = True`.  The view holds a reference to
+the `AiohttpMCPTransport` instance.
 
 ### `component/__init__.py`
 
 **`async_setup_entry()`:**
 
-1. Create `ServerInfo`, `SessionManager`, `HamsterEffectHandler`,
-   `AiohttpMCPTransport`.
-2. Register `HamsterMCPView`.
-3. Generate initial tool list from `hass.services.async_services()`
+1. Create `ServerInfo(name="hamster", version=...)` where version comes
+   from `importlib.metadata.version("hamster")`.
+2. Create `SessionManager`, `HamsterEffectHandler(hass)`,
+   `AiohttpMCPTransport(manager, effect_handler)`.
+3. Register `HamsterMCPView(transport)` via
+   `hass.http.register_view()`.
+4. Generate initial tool list from `hass.services.async_services()`
    using default `ToolFilterConfig()` (all services dynamic; tristate
    config is wired up when the options flow lands per Q005).
-4. Listen for `EVENT_SERVICE_REGISTERED` / `EVENT_SERVICE_REMOVED` to
-   regenerate tools.
-5. Start timeout loop as background task.
-6. Register cleanup via `entry.async_on_unload()`.
+   Call `manager.update_tools(services_to_mcp_tools(services))`.
+5. Listen for `EVENT_SERVICE_REGISTERED` / `EVENT_SERVICE_REMOVED`.
+   On each event, call `manager.notify_services_changed(now)`.  The
+   wakeup loop handles debouncing and triggers regeneration via a
+   callback.  Pass the `async_listen()` unsub callbacks to
+   `entry.async_on_unload()`.
+6. Start wakeup loop as background task via
+   `entry.async_create_background_task()`.  The loop calls
+   `manager.check_wakeups()` and invokes a tool-regeneration callback
+   (which calls `async_services()` + `services_to_mcp_tools()` +
+   `manager.update_tools()`).
+7. Store `manager`, `transport`, and the background task in
+   `hass.data[DOMAIN][entry.entry_id]`.
 
 **`async_unload_entry()`:**
 
-Cancel timeout task, remove stored data.
+1. Call `transport.shutdown()` (sets loaded flag to `False`; new
+   requests return 503; in-flight requests complete naturally).
+2. Cancel wakeup background task (awaited, not fire-and-forget).
+3. Remove `hass.data[DOMAIN][entry.entry_id]`.
+   Event listener unsubs are handled automatically by
+   `entry.async_on_unload()` callbacks registered during setup.
 
 ### Tests --- `component/_tests/`
 
@@ -881,6 +1168,8 @@ Cancel timeout task, remove stored data.
 - Successful service call -> `ServiceCallResult(success=True)`.
 - `ServiceNotFound` / `ServiceValidationError` / `HomeAssistantError`
   -> appropriate error results.
+- Generic `Exception` -> `ServiceCallResult(success=False)` with
+  formatted error message; exception logged.
 
 ---
 

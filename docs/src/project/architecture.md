@@ -58,6 +58,8 @@ hamster/
 │   └── hamster/                          # HACS deployment shim
 │       ├── __init__.py                   # Re-exports from hamster.component
 │       ├── config_flow.py                # Re-exports
+│       ├── brand/
+│       │   └── icon.png
 │       ├── manifest.json
 │       ├── strings.json
 │       └── translations/en.json
@@ -65,7 +67,6 @@ hamster/
 │   ├── mkdocs.yml
 │   └── src/
 ├── hacs.json
-├── brand/icon.png
 ├── pyproject.toml
 ├── mise.toml
 ├── .pre-commit-config.yaml
@@ -210,7 +211,7 @@ All errors except I/O failures are handled in the sans-IO core:
 | Unknown session ID | **SessionManager** | `SendResponse(404)` |
 | Missing session ID after init | **SessionManager** | `SendResponse(400)` |
 | Wrong state, unknown method | **MCPServerSession** | Error result (manager wraps into `SendResponse`) |
-| HA service call exception | **EffectHandler** | `ServiceCallResult` with error; `resume()` produces `Done(isError=True)` |
+| HA service call exception | **EffectHandler** | `ServiceCallResult` with error; `resume()` produces `Done(CallToolResult(is_error=True))` |
 
 Protocol errors never escape the core.
 Application errors never escape the handler.
