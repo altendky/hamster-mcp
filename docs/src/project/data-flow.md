@@ -11,13 +11,15 @@ generation specifics see [Tool Generation](tool-generation.md).
 flowchart TB
     client["MCP Client<br/>(Claude, opencode, etc.)"]
     view["HomeAssistantView<br/>requires_auth = True<br/>HA validates bearer token"]
-    transport["AiohttpMCPTransport<br/>Validates headers, parses JSON,<br/>drives MCPServerSession (sans-IO),<br/>handles initialize handshake internally"]
+    transport["AiohttpMCPTransport<br/>Validates headers, parses JSON,<br/>dispatches protocol events"]
+    manager["SessionManager (sans-IO)<br/>Routes to session by ID,<br/>validates JSON-RPC, emits events,<br/>tracks timeouts"]
     handler["MCPHandler (component layer)<br/>handle_tool_list() → cached tools<br/>handle_tool_call() → effect/continuation dispatch"]
     ha["Home Assistant Core<br/>hass.services.async_call()<br/>hass.states, registries, etc."]
     response["JSON-RPC response → HTTP response → MCP client"]
 
     client -->|"HTTPS POST (JSON-RPC)<br/>Authorization: Bearer"| view
     view --> transport
+    transport --> manager
     transport -->|"delegates application events"| handler
     handler --> ha
     ha --> response
@@ -39,28 +41,31 @@ stateDiagram-v2
 ```
 
 Messages received in the wrong state produce a JSON-RPC error response.
-The session never performs I/O --- it only validates and emits events.
+The `SessionManager` routes requests to sessions by `Mcp-Session-Id` and
+creates new sessions on `initialize` via an injected `session_id_factory`.
+Neither the manager nor individual sessions perform I/O --- they only
+validate and emit events.
 
 ## Initialization Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Transport
-    participant Session as Session (sans-IO)
+    participant Transport as AiohttpMCPTransport
+    participant Manager as SessionManager (sans-IO)
 
-    Client->>Transport: POST /api/hamster<br/>initialize request
-    Transport->>Session: receive_message(msg)
-    Note over Session: Validate state: IDLE<br/>Parse params<br/>Transition → INITIALIZING
-    Session-->>Transport: [InitializeRequested]
-    Transport->>Session: send_initialize_result()
-    Session-->>Transport: JSON-RPC response
-    Transport-->>Client: HTTP 200<br/>Mcp-Session-Id: id
+    Client->>Transport: POST /api/hamster<br/>initialize request (no session ID)
+    Note over Transport: Validate headers<br/>Parse JSON body
+    Transport->>Manager: receive_message(None, msg, now)
+    Note over Manager: No session ID → create new session<br/>via session_id_factory<br/>Validate JSON-RPC, transition → INITIALIZING
+    Manager-->>Transport: InitializeRequested + new session_id
+    Note over Transport: Build HTTP response with<br/>Mcp-Session-Id header
+    Transport-->>Client: HTTP 200<br/>Mcp-Session-Id: &lt;id&gt;
 
-    Client->>Transport: POST /api/hamster<br/>notifications/initialized
-    Transport->>Session: receive_message(msg)
-    Note over Session: Validate: INITIALIZING<br/>Transition → ACTIVE
-    Session-->>Transport: [NotificationReceived]
+    Client->>Transport: POST /api/hamster<br/>notifications/initialized<br/>Mcp-Session-Id: &lt;id&gt;
+    Transport->>Manager: receive_message(&lt;id&gt;, msg, now)
+    Note over Manager: Look up session by ID<br/>Transition → ACTIVE
+    Manager-->>Transport: [NotificationReceived]
     Transport-->>Client: HTTP 202 Accepted
 ```
 
@@ -75,21 +80,20 @@ The transport delegates to the handler, which returns the cached list.
 sequenceDiagram
     participant Client
     participant Transport as AiohttpMCPTransport
-    participant Session as MCPServerSession (sans-IO)
+    participant Manager as SessionManager (sans-IO)
     participant Handler as MCPHandler (component)
 
-    Client->>Transport: POST /api/hamster<br/>tools/list
+    Client->>Transport: POST /api/hamster<br/>tools/list<br/>Mcp-Session-Id: &lt;id&gt;
     Note over Transport: Validate headers<br/>Parse JSON body
-    Transport->>Session: receive_message(msg)
-    Note over Session: Validate state: ACTIVE<br/>Parse JSON-RPC
-    Session-->>Transport: [ToolListRequested]
+    Transport->>Manager: receive_message(&lt;id&gt;, msg, now)
+    Note over Manager: Look up session by ID<br/>Validate state: ACTIVE<br/>Parse JSON-RPC
+    Manager-->>Transport: [ToolListRequested]
 
     Transport->>Handler: handle_tool_list()
     Note over Handler: Return cached tool list
     Handler-->>Transport: list[Tool]
 
-    Transport->>Session: send_tools_list(tools)
-    Session-->>Transport: JSON-RPC response
+    Note over Transport: Build JSON-RPC response
     Transport-->>Client: HTTP 200<br/>{"result":{"tools":[...]}}
 ```
 
@@ -103,15 +107,15 @@ The transport delegates via `MCPHandler` and receives a finished result.
 sequenceDiagram
     participant Client
     participant Transport as AiohttpMCPTransport
-    participant Session as MCPServerSession (sans-IO)
+    participant Manager as SessionManager (sans-IO)
     participant Handler as MCPHandler (component)
     participant HA as Home Assistant
 
-    Client->>Transport: POST /api/hamster<br/>tools/call hamster_light__turn_on
+    Client->>Transport: POST /api/hamster<br/>tools/call hamster_light__turn_on<br/>Mcp-Session-Id: &lt;id&gt;
     Note over Transport: Validate headers<br/>Parse JSON body
-    Transport->>Session: receive_message(msg)
-    Note over Session: Validate state: ACTIVE<br/>Parse JSON-RPC
-    Session-->>Transport: [ToolCallRequested]
+    Transport->>Manager: receive_message(&lt;id&gt;, msg, now)
+    Note over Manager: Look up session by ID<br/>Validate state: ACTIVE<br/>Parse JSON-RPC
+    Manager-->>Transport: [ToolCallRequested]
 
     Transport->>Handler: handle_tool_call(name, args)
     Note over Handler: call_tool(name, args)<br/>→ ServiceCall effect
@@ -120,8 +124,7 @@ sequenceDiagram
     Note over Handler: resume(continuation, result)<br/>→ Done(CallToolResult)
     Handler-->>Transport: CallToolResult
 
-    Transport->>Session: send_tool_result(result)
-    Session-->>Transport: JSON-RPC response
+    Note over Transport: Build JSON-RPC response
     Transport-->>Client: HTTP 200<br/>{"result":{"content":[...]}}
 ```
 

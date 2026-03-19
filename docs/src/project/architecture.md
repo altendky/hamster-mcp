@@ -38,7 +38,7 @@ hamster/
 │       │   ├── _core/                    # Sans-IO protocol core
 │       │   │   ├── __init__.py
 │       │   │   ├── events.py             # Protocol events + tool effect/continuation types
-│       │   │   ├── session.py            # Server session + state machine
+│       │   │   ├── session.py            # SessionManager + MCPServerSession
 │       │   │   ├── jsonrpc.py            # JSON-RPC 2.0 parsing/building
 │       │   │   ├── tools.py              # Tool generation, call_tool(), resume()
 │       │   │   └── types.py              # MCP data types (Tool, Content, etc.)
@@ -82,9 +82,9 @@ hamster/
 | `hamster.mcp._core.types` | Core | MCP data types: `Tool`, `Content`, `ServerInfo`, `ServerCapabilities` |
 | `hamster.mcp._core.jsonrpc` | Core | JSON-RPC 2.0 message parsing and response building |
 | `hamster.mcp._core.events` | Core | Protocol events (`InitializeRequested`, `ToolCallRequested`, etc.) and tool effect/continuation types (`Done`, `ServiceCall`, `FormatServiceResponse`) |
-| `hamster.mcp._core.session` | Core | `MCPServerSession` --- sans-IO session with state machine |
+| `hamster.mcp._core.session` | Core | `SessionManager` --- multi-session container; routes by session ID, creates sessions via injected `session_id_factory`, tracks timeouts. `MCPServerSession` --- per-session sans-IO state machine. |
 | `hamster.mcp._core.tools` | Core | Pure tool generation (`services_to_mcp_tools`), `call_tool()`, `resume()` |
-| `hamster.mcp._io.aiohttp` | Integration | `AiohttpMCPTransport` --- bridges aiohttp requests to `MCPServerSession` |
+| `hamster.mcp._io.aiohttp` | Integration | `AiohttpMCPTransport` --- bridges aiohttp requests to `SessionManager`. Timeout wakeup loop. |
 | `hamster.component` | Application | HA integration entry point (`async_setup_entry`, `async_unload_entry`) |
 | `hamster.component.config_flow` | Application | Config flow (setup) + options flow (tristate control) |
 | `hamster.component.http` | Application | `HamsterMCPView` --- `HomeAssistantView` subclass, wires transport + HA auth. `HamsterMCPHandler` --- implements `MCPHandler`, runs effect dispatch loop. |
@@ -112,11 +112,13 @@ flowchart TB
     end
 
     subgraph core["hamster.mcp._core"]
-        session["MCPServerSession\n(sans-IO state machine)"]
+        manager["SessionManager\n(routes by ID, tracks timeouts)"]
+        session["MCPServerSession\n(per-session state machine)"]
     end
 
     view --> transport
-    transport --> session
+    transport --> manager
+    manager --> session
     transport -.->|delegates| protocol
     handler -.->|implements| protocol
     handler --> dispatch
@@ -139,12 +141,14 @@ application concerns to the handler:
 
 | Concern | Owner | Layer |
 | --- | --- | --- |
-| HTTP header validation | Transport | `_io` |
+| HTTP header extraction | Transport | `_io` |
 | JSON body parsing | Transport | `_io` |
-| JSON-RPC framing | Session | `_core` |
-| Session state machine | Session | `_core` |
-| Session ID lookup | Transport | `_io` |
-| Initialize handshake | Transport | `_io` |
+| HTTP response construction | Transport | `_io` |
+| Timeout wakeup loop | Transport | `_io` |
+| JSON-RPC framing | MCPServerSession | `_core` |
+| Session state machine | MCPServerSession | `_core` |
+| Session routing + creation | SessionManager | `_core` |
+| Session timeout tracking | SessionManager | `_core` |
 | Tool listing | **Handler** | `component` |
 | Tool execution | **Handler** | `component` |
 
