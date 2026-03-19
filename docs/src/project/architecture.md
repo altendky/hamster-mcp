@@ -91,6 +91,80 @@ hamster/
 | `hamster.component.const` | Application | Domain constant, defaults |
 | `custom_components/hamster/` | Deployment | HACS shim --- thin re-exports so HA can discover the integration |
 
+## Handler Protocol
+
+The I/O transport must delegate application-specific work (listing tools,
+executing tool calls) to the component layer, but cannot import
+`homeassistant`.
+The `MCPHandler` protocol defines this boundary.
+
+```mermaid
+flowchart TB
+    subgraph component["hamster.component"]
+        view["HamsterMCPView\n(HomeAssistantView)"]
+        handler["HamsterMCPHandler"]
+        dispatch["Effect / continuation\ndispatch loop"]
+    end
+
+    subgraph io["hamster.mcp._io"]
+        transport["AiohttpMCPTransport"]
+        protocol["«Protocol» MCPHandler\nhandle_tool_list()\nhandle_tool_call()"]
+    end
+
+    subgraph core["hamster.mcp._core"]
+        session["MCPServerSession\n(sans-IO state machine)"]
+    end
+
+    view --> transport
+    transport --> session
+    transport -.->|delegates| protocol
+    handler -.->|implements| protocol
+    handler --> dispatch
+```
+
+Defined in `hamster.mcp._io`, implemented by `hamster.component`:
+
+```python
+class MCPHandler(Protocol):
+    async def handle_tool_list(self) -> list[Tool]: ...
+    async def handle_tool_call(
+        self, name: str, arguments: dict[str, object],
+    ) -> CallToolResult: ...
+```
+
+### Responsibility Split
+
+The transport handles MCP protocol concerns internally and delegates
+application concerns to the handler:
+
+| Concern | Owner | Layer |
+| --- | --- | --- |
+| HTTP header validation | Transport | `_io` |
+| JSON body parsing | Transport | `_io` |
+| JSON-RPC framing | Session | `_core` |
+| Session state machine | Session | `_core` |
+| Session ID lookup | Transport | `_io` |
+| Initialize handshake | Transport | `_io` |
+| Tool listing | **Handler** | `component` |
+| Tool execution | **Handler** | `component` |
+
+### Two-Level Dispatch
+
+Protocol events and tool effects are dispatched at different layers:
+
+1. **Protocol events** --- `MCPServerSession.receive_message()` emits events
+   (`InitializeRequested`, `ToolListRequested`, `ToolCallRequested`).
+   The transport handles protocol events internally and delegates
+   application events to the handler via `MCPHandler`.
+
+2. **Tool effects** --- `handle_tool_call()` uses the effect/continuation
+   pattern internally (see [Principles](principles.md)).
+   `call_tool()` returns a `ToolEffect`, the handler runs a dispatch loop,
+   and `resume()` produces the next effect until `Done`.
+
+The transport never sees tool effects.
+The handler never sees protocol events.
+
 ## Distribution
 
 The project produces two artifacts from a single repository:

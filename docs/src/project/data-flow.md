@@ -11,17 +11,15 @@ generation specifics see [Tool Generation](tool-generation.md).
 flowchart TB
     client["MCP Client<br/>(Claude, opencode, etc.)"]
     view["HomeAssistantView<br/>requires_auth = True<br/>HA validates bearer token"]
-    transport["AiohttpMCPTransport<br/>Validates headers, parses JSON,<br/>passes to MCPServerSession"]
-    session["MCPServerSession (sans-IO)<br/>Validates state, parses JSON-RPC,<br/>emits events"]
-    dispatch["Event dispatch<br/>InitializeRequested → build result<br/>ToolListRequested → return cached tools<br/>ToolCallRequested → service call"]
+    transport["AiohttpMCPTransport<br/>Validates headers, parses JSON,<br/>drives MCPServerSession (sans-IO),<br/>handles initialize handshake internally"]
+    handler["MCPHandler (component layer)<br/>handle_tool_list() → cached tools<br/>handle_tool_call() → effect/continuation dispatch"]
     ha["Home Assistant Core<br/>hass.services.async_call()<br/>hass.states, registries, etc."]
     response["JSON-RPC response → HTTP response → MCP client"]
 
     client -->|"HTTPS POST (JSON-RPC)<br/>Authorization: Bearer"| view
     view --> transport
-    transport --> session
-    session --> dispatch
-    dispatch --> ha
+    transport -->|"delegates application events"| handler
+    handler --> ha
     ha --> response
 ```
 
@@ -71,23 +69,26 @@ sequenceDiagram
 The tool list is generated once at integration load time and cached.
 It is regenerated when `EVENT_SERVICE_REGISTERED` or `EVENT_SERVICE_REMOVED`
 fires.
-The `tools/list` handler simply returns the cached list.
+The transport delegates to the handler, which returns the cached list.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Transport
-    participant Session
-    participant Component
+    participant Transport as AiohttpMCPTransport
+    participant Session as MCPServerSession (sans-IO)
+    participant Handler as MCPHandler (component)
 
-    Client->>Transport: POST tools/list
-    Transport->>Session: receive_message()
-    Note over Session: State: ACTIVE
+    Client->>Transport: POST /api/hamster<br/>tools/list
+    Note over Transport: Validate headers<br/>Parse JSON body
+    Transport->>Session: receive_message(msg)
+    Note over Session: Validate state: ACTIVE<br/>Parse JSON-RPC
     Session-->>Transport: [ToolListRequested]
-    Transport->>Component: handle event
-    Note over Component: Return cached tool list
-    Component-->>Transport: tool list
-    Transport->>Session: send_tools_list()
+
+    Transport->>Handler: handle_tool_list()
+    Note over Handler: Return cached tool list
+    Handler-->>Transport: list[Tool]
+
+    Transport->>Session: send_tools_list(tools)
     Session-->>Transport: JSON-RPC response
     Transport-->>Client: HTTP 200<br/>{"result":{"tools":[...]}}
 ```
@@ -95,29 +96,31 @@ sequenceDiagram
 ## Tool Call Flow (with Effect/Continuation)
 
 For tool calls that require I/O (most do --- they call HA services), the
-component layer uses the effect/continuation dispatch loop.
+handler uses the effect/continuation dispatch loop internally.
+The transport delegates via `MCPHandler` and receives a finished result.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Transport
-    participant Session
-    participant Component
-    participant HA as HA Core
+    participant Transport as AiohttpMCPTransport
+    participant Session as MCPServerSession (sans-IO)
+    participant Handler as MCPHandler (component)
+    participant HA as Home Assistant
 
-    Client->>Transport: POST tools/call<br/>hamster_light__turn_on
-    Transport->>Session: receive_message()
-    Note over Session: State: ACTIVE
+    Client->>Transport: POST /api/hamster<br/>tools/call hamster_light__turn_on
+    Note over Transport: Validate headers<br/>Parse JSON body
+    Transport->>Session: receive_message(msg)
+    Note over Session: Validate state: ACTIVE<br/>Parse JSON-RPC
     Session-->>Transport: [ToolCallRequested]
-    Transport->>Component: handle event
 
-    Note over Component: call_tool() → ServiceCall effect
-    Component->>HA: hass.services.async_call()
-    HA-->>Component: service result
-    Note over Component: resume() → Done
+    Transport->>Handler: handle_tool_call(name, args)
+    Note over Handler: call_tool(name, args)<br/>→ ServiceCall effect
+    Handler->>HA: hass.services.async_call(...)
+    HA-->>Handler: service result
+    Note over Handler: resume(continuation, result)<br/>→ Done(CallToolResult)
+    Handler-->>Transport: CallToolResult
 
-    Component-->>Transport: tool result
-    Transport->>Session: send_tool_result()
+    Transport->>Session: send_tool_result(result)
     Session-->>Transport: JSON-RPC response
     Transport-->>Client: HTTP 200<br/>{"result":{"content":[...]}}
 ```
