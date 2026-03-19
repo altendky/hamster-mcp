@@ -60,9 +60,9 @@ def resume(
     """Pure dispatch: continuation + I/O result -> next effect."""
     ...
 
-# I/O module --- interprets effects in a loop
-async def dispatch_effect(
-    hass: HomeAssistant,
+# I/O transport --- runs the dispatch loop, delegates I/O to EffectHandler
+async def run_effects(
+    effect_handler: EffectHandler,
     effect: ToolEffect,
 ) -> CallToolResult:
     current = effect
@@ -76,12 +76,12 @@ async def dispatch_effect(
                 data=data,
                 continuation=continuation,
             ):
-                result = await hass.services.async_call(
-                    domain, service, data, blocking=True,
+                result = await effect_handler.execute_service_call(
+                    domain, service, data,
                 )
                 current = resume(
                     continuation,
-                    ServiceCallResult(result),
+                    result,
                 )
 ```
 
@@ -135,7 +135,8 @@ Hamster generates them at runtime:
 
 The tool generation function itself is **pure** --- it takes service data in and
 returns tool definitions out.
-The I/O layer handles calling `async_services()` and wiring the results.
+The component layer handles calling `async_services()` and feeding the results
+to the `SessionManager` via `update_tools()`.
 
 ## Tristate Tool Control
 
