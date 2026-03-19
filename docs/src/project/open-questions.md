@@ -34,18 +34,13 @@ services, multi-step flow.
 
 **No strong leaning yet.**
 
-## Q006: HA Service Call Error Mapping
+## ~~Q006: HA Service Call Error Mapping~~ --- RESOLVED
 
-**Question:** How should HA service call exceptions be mapped to MCP tool error
-content?
-
-**Context:** HA service calls can raise `ServiceNotFound`,
-`ServiceValidationError`, `HomeAssistantError`, or generic exceptions.
-MCP tool errors are `{"content": [{"type": "text", "text": "..."}], "isError": true}`.
-The error message should be useful to the LLM.
-
-**Leaning toward:** Catch known exception types, format human-readable messages.
-Include the exception class name and message.
+Resolved in the implementation plan (Stage 8).  `HamsterEffectHandler`
+catches `ServiceNotFound`, `ServiceValidationError`, `HomeAssistantError`,
+and generic `Exception`, formatting human-readable messages for the LLM.
+Each is returned as `ServiceCallResult(success=False, error=...)`, which
+`resume()` turns into `Done(CallToolResult(is_error=True))`.
 
 ## ~~Q007: Testing the HA Component~~ --- RESOLVED
 
@@ -54,3 +49,25 @@ Moved to [Decisions](decisions.md) as D013.
 ## ~~Q008: Tests in Wheel~~ --- RESOLVED
 
 Moved to [Decisions](decisions.md) as D014.
+
+## Q009: Schema Fidelity vs. LLM Clarity
+
+**Question:** Should MCP tool schemas transparently mirror HA's native service
+interface, or reshape it for LLM clarity?
+
+**Context:** Two current cases where the schema diverges from HA's raw API:
+
+- **Target properties** (`entity_id`, `device_id`, `area_id`): HA accepts both
+  single strings and arrays of strings.  The MCP schema uses array-only
+  (`{"type": "array", "items": {"type": "string"}}`) for consistency and
+  predictability.
+- **Target/data separation:** HA's `async_call` has a separate `target` parameter,
+  but the MCP schema presents a flat property list.  All arguments are passed as
+  `service_data` (HA extracts target keys internally).
+
+Both choices prioritize a clear, predictable schema for the LLM over transparent
+passthrough of HA's API.  This may need revisiting if edge cases emerge where the
+reshaping causes problems (e.g., services that interpret target keys differently,
+or LLMs that struggle with always-array semantics for single-entity calls).
+
+**Leaning toward:** Keep the current reshaping.  Revisit if real problems surface.

@@ -203,14 +203,15 @@ class SessionManager:
         session_id_factory: Callable[[], str] = ...,
     ): ...
 
-    def receive_message(
-        self, session_id: str | None, message: dict, now: float,
-    ) -> ...:
-        """Route to session (or create one on initialize).
-        - session_id=None + initialize → create via session_id_factory
-        - session_id known → delegate to that session
-        - session_id unknown → error
-        Updates last-activity, returns events + next_wakeup.
+    def receive_request(
+        self, request: IncomingRequest, now: float,
+    ) -> ReceiveResult:
+        """Full HTTP-to-protocol pipeline.
+        Validates headers, parses JSON/JSON-RPC, routes to session.
+        - No session ID + initialize → create via session_id_factory
+        - Known session ID → delegate to that session
+        - Unknown session ID → error
+        Returns SendResponse or RunEffects.
         """
         ...
 
