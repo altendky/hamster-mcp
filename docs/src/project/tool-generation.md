@@ -92,7 +92,7 @@ Resolution hierarchy: `label_id` → entities/devices/areas; `floor_id` → area
 
 ## Typical LLM Interaction
 
-```
+```text
 LLM: hamster_services_search(query="light")
 → light.turn_on — Turn on a light (has target)
   light.turn_off — Turn off a light (has target)
