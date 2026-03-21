@@ -604,11 +604,13 @@ message and `is_error=True`.
 - Case-insensitive matching.
 - Domain filter restricts results.
 - No match -> "no results" message.
+- Empty index + any query -> "no results" message.
 
 **`explain()`:**
 
 - Known service -> raw HA description with fields, selectors, target.
 - Unknown service -> `None`.
+- Empty index + any domain/service -> `None`.
 - Service with sections (nested field groups) -> fields shown flattened.
 
 **Selector descriptions:**
@@ -626,6 +628,10 @@ message and `is_error=True`.
   correct domain, service, target, data.
 - `hamster_services_call` with unknown service -> `Done` with
   `is_error=True`.
+- `hamster_services_search` with empty index -> `Done` with "no results"
+  text.
+- `hamster_services_call` with empty index -> `Done` with
+  `is_error=True` (service not in index).
 - `hamster_services_schema` -> `Done` with selector description.
 - Unknown tool name -> `ValueError`.
 
@@ -871,7 +877,10 @@ no mocks.  The entire protocol is testable with plain data.
 - Wrong `Content-Type` -> `SendResponse(415)`.
 - `Content-Type` with parameters (e.g. `application/json; charset=utf-8`)
   -> accepted.
-- Missing `Accept` -> `SendResponse(406)`.
+- `Accept` header absent (`accept=None`) -> `SendResponse(406)`.
+- `Accept` header empty string (`accept=""`) -> `SendResponse(406)`.
+- `Accept: text/html` (present but incompatible) -> `SendResponse(406)`.
+- `Accept: application/json` -> accepted.
 - `Accept: */*` -> accepted.
 - `Accept: application/*` -> accepted.
 - Malformed JSON body -> `SendResponse(400)` with `PARSE_ERROR`.
