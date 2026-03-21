@@ -8,6 +8,8 @@ uv = "latest"
 [settings]
 # Auto-create and activate a .venv managed by uv.
 python.uv_venv_auto = "create|source"
+# Use standard (non-freethreaded) Python build to match Home Assistant.
+python.precompiled_flavor = "install_only_stripped"
 
 [env]
 # Ensure uv uses the mise-managed Python interpreter, not a system one.
