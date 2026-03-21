@@ -53,6 +53,28 @@ descriptions as-is (D018).  `call` separates target and data to match HA's
 `async_call` signature (D019).  The LLM sees HA's native format and uses
 `schema` to understand selector types when needed.
 
+## ~~Q017: `call_tool()` Error Mechanism for Unknown Tool Name~~ --- RESOLVED
+
+Moved to [Decisions](decisions.md) as D020 (part of the `call_tool()` contract
+change).
+
+Return `Done(CallToolResult(is_error=True))` for unknown tool names instead of
+raising `ValueError`.  `call_tool()` already uses this pattern for "service not
+found in index."  Since the service index can change between the session's
+tool-name validation and `call_tool()` execution, unknown-name is a data
+condition, not a violated invariant.  The function's contract becomes "returns
+`ToolEffect` for all inputs" with no exception paths.  The session still
+validates tool names first to produce a proper `INVALID_PARAMS` JSON-RPC error,
+but `call_tool()` handles it gracefully either way.
+
+## ~~Q018: `ServerCapabilities` Type Structure~~ --- RESOLVED
+
+Moved to [Decisions](decisions.md) as D020.
+
+## ~~Q019: Logging Strategy~~ --- RESOLVED
+
+Moved to [Decisions](decisions.md) as D021.
+
 ## Q010: Origin Header Validation Strategy
 
 **Question:** How should the server validate the `Origin` header to prevent
@@ -223,117 +245,3 @@ newly-created session, both of which are problematic.
 and a JSON-RPC `INVALID_REQUEST` error body.  This is the simplest
 behavior and avoids ambiguity about session state for other messages in
 the batch.
-
-## Q017: `call_tool()` Error Mechanism for Unknown Tool Name
-
-**Question:** Should `call_tool()` raise `ValueError` for unknown tool
-names, or return `Done(CallToolResult(is_error=True))`?
-
-**Context:** Currently `call_tool()` raises `ValueError` for unknown
-tool names (implementation plan Stage 4, line 568).  `MCPServerSession`
-must catch this and convert it to `SessionError(INVALID_PARAMS)` (Stage
-5, line 732).  This creates an implicit contract between `call_tool()`
-and the session: exception-based control flow for a predictable case.
-
-`call_tool()` already returns `Done(CallToolResult(is_error=True))` for
-"service not found in index" --- a similar "not found" condition.  Using
-the same pattern for "unknown tool name" would be consistent.
-
-Options:
-
-1. Keep `ValueError` --- treats unknown tool name as a programming error
-   (the session should only pass known names).  The session's tool-name
-   validation is the real guard.
-2. Return `Done(is_error=True)` --- treats it as a data error,
-   consistent with "service not found".  Removes exception-based control
-   flow.
-3. Return a dedicated `ToolNotFound` effect type --- more explicit, but
-   adds a type for a case that should rarely occur.
-
-**No strong leaning yet.**  Option 1 is defensible if the session always
-validates first.  Option 2 is simpler and more consistent.
-
-## Q018: `ServerCapabilities` Type Structure
-
-**Question:** Should `ServerCapabilities` model the `tools` capability
-as a `bool` or as a proper dataclass that can express sub-capabilities
-like `listChanged`?
-
-**Context:** The current design uses `ServerCapabilities(tools: bool =
-True)`, serialized as `{"tools": {}}`.  MCP allows richer capability
-declarations:
-
-```json
-{"capabilities": {"tools": {"listChanged": true}}}
-```
-
-The `bool` representation cannot express `listChanged`.  When SSE
-support lands (Q012), the server would need `listChanged: true` to tell
-clients they can subscribe to tool list change notifications.  At that
-point, `ServerCapabilities` would need to change from `tools: bool` to
-something richer --- a breaking change for any code constructing it.
-
-Options:
-
-1. Keep `tools: bool` --- accept the future refactor when SSE lands.
-   Simpler now.
-2. Model properly now with a `ToolsCapability` dataclass:
-
-   ```python
-   @dataclass(frozen=True)
-   class ToolsCapability:
-       list_changed: bool = False
-
-   @dataclass(frozen=True)
-   class ServerCapabilities:
-       tools: ToolsCapability | None = field(
-           default_factory=ToolsCapability,
-       )
-   ```
-
-   Serialization: `tools=ToolsCapability(list_changed=False)` ->
-   `{"tools": {}}`.  `tools=ToolsCapability(list_changed=True)` ->
-   `{"tools": {"listChanged": true}}`.  `tools=None` -> `{}`.
-
-**Leaning toward:** Option 2 --- trivial extra work now, avoids a
-breaking change later, and honestly represents the protocol's structure.
-
-## Q019: Logging Strategy
-
-**Question:** Should the project define a logging strategy as part of
-the design, or leave it as implementation guidance?
-
-**Context:** The design documents logging in exactly one place:
-`HamsterEffectHandler` logs unexpected exceptions via
-`_LOGGER.exception()` (Stage 8).  There is no broader guidance for
-session lifecycle events, index rebuilds, request handling, or auditing.
-
-In production, operators need visibility into:
-
-- Whether clients are connecting (session created/expired).
-- Whether the service index is populated (index rebuilt, service count).
-- What services the LLM is invoking (tool call audit trail).
-- Client errors that might indicate misconfiguration (bad headers,
-  unknown sessions).
-
-Options:
-
-1. Define formal log points in the implementation plan (specific log
-   statements at specific locations with specific levels).
-2. Add implementation guidance (recommended log levels and categories,
-   not prescriptive statements).
-3. Leave to implementer discretion.
-
-Recommended log levels if guidance is added:
-
-- **INFO**: session created, session expired, index rebuilt (with service
-  count).
-- **DEBUG**: individual request handling, tool call arguments/results.
-- **WARNING**: client errors (bad headers, unknown sessions, rejected
-  requests).
-- **ERROR**: unexpected failures only (e.g. `HamsterEffectHandler`
-  catch-all).
-
-**Leaning toward:** Option 2 --- add implementation guidance with the
-log level recommendations above.  Formal log-point specs are too rigid;
-implementer discretion with no guidance risks inconsistency.
