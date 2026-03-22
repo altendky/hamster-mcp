@@ -1691,6 +1691,9 @@ dev = [
     { name = "pytest-asyncio", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2'" },
     { name = "pytest-cov", version = "6.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13.2'" },
     { name = "pytest-cov", version = "7.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2'" },
+    { name = "pytest-homeassistant-custom-component", version = "0.13.236", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13.2'" },
+    { name = "pytest-homeassistant-custom-component", version = "0.13.316", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2' and python_full_version < '3.14.2'" },
+    { name = "pytest-homeassistant-custom-component", version = "0.13.319", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
     { name = "ruff" },
 ]
 docs = [
@@ -1709,7 +1712,7 @@ test = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.11" },
     { name = "hamster", extras = ["test"], marker = "extra == 'component-test'" },
-    { name = "hamster", extras = ["test"], marker = "extra == 'dev'" },
+    { name = "hamster", extras = ["test", "component-test"], marker = "extra == 'dev'" },
     { name = "homeassistant", specifier = ">=2025.2" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mypy", marker = "extra == 'dev'" },

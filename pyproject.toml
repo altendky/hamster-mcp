@@ -39,9 +39,9 @@ test = [
     "pytest-asyncio",
     "pytest-cov",
 ]
-# Development tools — linting, type checking
+# Development tools — linting, type checking, component testing
 dev = [
-    "hamster[test]",
+    "hamster[test,component-test]",
     "ruff>=0.11",
     "mypy",
 ]
