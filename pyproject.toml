@@ -25,9 +25,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
-# No runtime dependencies beyond stdlib.  aiohttp and homeassistant are
-# provided by the HA runtime and must not be listed here.
-dependencies = []
+# Runtime dependencies. When installed in HA, these are already satisfied.
+dependencies = [
+    "aiohttp>=3.11",
+    "homeassistant>=2025.2",
+]
 
 [project.optional-dependencies]
 # Test dependencies — installable by users to verify their install:
@@ -37,12 +39,16 @@ test = [
     "pytest-asyncio",
     "pytest-cov",
 ]
-# Development tools — linting, type checking, test deps, aiohttp for I/O tests
+# Development tools — linting, type checking, component testing
 dev = [
-    "hamster[test]",
-    "aiohttp",
-    "ruff",
+    "hamster[test,component-test]",
+    "ruff>=0.11",
     "mypy",
+]
+# Component tests — requires Home Assistant test infrastructure
+component-test = [
+    "hamster[test]",
+    "pytest-homeassistant-custom-component>=0.13",
 ]
 docs = [
     "mkdocs-material",
