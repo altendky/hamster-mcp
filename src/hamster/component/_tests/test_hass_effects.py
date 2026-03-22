@@ -127,18 +127,192 @@ class TestInternalConnectionSendError:
         assert conn._result_event.is_set()
 
 
-class TestInternalConnectionUnsupportedMethods:
-    """Tests for unsupported InternalConnection methods."""
+class TestInternalConnectionSendMessage:
+    """Tests for InternalConnection.send_message()."""
 
-    def test_send_message_raises(self) -> None:
-        """send_message raises NotImplementedError."""
+    # --- Success cases with bytes ---
+
+    def test_send_message_bytes_success(self) -> None:
+        """send_message with bytes success result."""
         hass = MagicMock()
         conn = InternalConnection(hass, None)
+        msg = b'{"id": 1, "type": "result", "success": true, "result": {"devices": []}}'
+
+        conn.send_message(msg)
+
+        assert conn.result == {"devices": []}
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    def test_send_message_bytes_success_null_result(self) -> None:
+        """send_message with bytes success and null result."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = b'{"id": 1, "type": "result", "success": true, "result": null}'
+
+        conn.send_message(msg)
+
+        assert conn.result is None
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    def test_send_message_bytes_success_no_result_key(self) -> None:
+        """send_message with bytes success but no result key."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = b'{"id": 1, "type": "result", "success": true}'
+
+        conn.send_message(msg)
+
+        assert conn.result is None
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    # --- Error cases with bytes ---
+
+    def test_send_message_bytes_error(self) -> None:
+        """send_message with bytes error result."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = (
+            b'{"id": 1, "type": "result", "success": false, '
+            b'"error": {"code": "not_found", "message": "Entity not found"}}'
+        )
+
+        conn.send_message(msg)
+
+        assert conn.result is None
+        assert conn.error == ("not_found", "Entity not found")
+        assert conn._result_event.is_set()
+
+    def test_send_message_bytes_error_missing_fields(self) -> None:
+        """send_message with bytes error missing code/message."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = b'{"id": 1, "type": "result", "success": false, "error": {}}'
+
+        conn.send_message(msg)
+
+        assert conn.error == ("unknown", "Unknown error")
+        assert conn._result_event.is_set()
+
+    # --- Success cases with str ---
+
+    def test_send_message_str_success(self) -> None:
+        """send_message with str success result."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = (
+            '{"id": 1, "type": "result", "success": true, "result": ["item1", "item2"]}'
+        )
+
+        conn.send_message(msg)
+
+        assert conn.result == ["item1", "item2"]
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    # --- Success cases with dict ---
+
+    def test_send_message_dict_success(self) -> None:
+        """send_message with dict success result."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg: dict[str, object] = {
+            "id": 1,
+            "type": "result",
+            "success": True,
+            "result": {"key": "value"},
+        }
+
+        conn.send_message(msg)
+
+        assert conn.result == {"key": "value"}
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    def test_send_message_dict_error(self) -> None:
+        """send_message with dict error result."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg: dict[str, object] = {
+            "id": 1,
+            "type": "result",
+            "success": False,
+            "error": {"code": "invalid", "message": "Bad input"},
+        }
+
+        conn.send_message(msg)
+
+        assert conn.error == ("invalid", "Bad input")
+        assert conn._result_event.is_set()
+
+    # --- Pong message ---
+
+    def test_send_message_pong(self) -> None:
+        """send_message with pong message."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg: dict[str, object] = {"id": 1, "type": "pong"}
+
+        conn.send_message(msg)
+
+        assert conn.result is None
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
+    # --- Error handling ---
+
+    def test_send_message_event_raises(self) -> None:
+        """send_message with event type raises NotImplementedError."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg: dict[str, object] = {"id": 1, "type": "event", "event": {"data": "value"}}
 
         with pytest.raises(NotImplementedError) as exc_info:
-            conn.send_message({"type": "event"})
+            conn.send_message(msg)
 
-        assert "send_message" in str(exc_info.value)
+        assert "event" in str(exc_info.value)
+
+    def test_send_message_unknown_type_raises(self) -> None:
+        """send_message with unknown type raises NotImplementedError."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg: dict[str, object] = {"id": 1, "type": "custom_type"}
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            conn.send_message(msg)
+
+        assert "custom_type" in str(exc_info.value)
+
+    def test_send_message_invalid_json_bytes(self) -> None:
+        """send_message with invalid JSON bytes captures error."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = b"not valid json"
+
+        conn.send_message(msg)
+
+        assert conn.error is not None
+        assert conn.error[0] == "json_error"
+        assert "parse" in conn.error[1].lower() or "Failed" in conn.error[1]
+        assert conn._result_event.is_set()
+
+    def test_send_message_invalid_json_str(self) -> None:
+        """send_message with invalid JSON str captures error."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+        msg = "not valid json"
+
+        conn.send_message(msg)
+
+        assert conn.error is not None
+        assert conn.error[0] == "json_error"
+        assert conn._result_event.is_set()
+
+
+class TestInternalConnectionUnsupportedMethods:
+    """Tests for unsupported InternalConnection methods."""
 
     def test_send_event_raises(self) -> None:
         """send_event raises NotImplementedError."""

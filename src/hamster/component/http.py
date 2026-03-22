@@ -109,17 +109,64 @@ class InternalConnection:
         self._result_event.set()
 
     def send_message(self, message: bytes | str | dict[str, object]) -> None:
-        """Not supported for internal invocation.
+        """Parse and handle pre-serialized WebSocket response messages.
+
+        Many HA handlers call this method with pre-serialized bytes for
+        performance (e.g., device_registry/list, entity_registry/list).
+        This implementation parses those messages to extract result/error data.
 
         Args:
-            message: Message to send (unused)
+            message: Response message as bytes, str, or dict
 
-        Raises:
-            NotImplementedError: Always
+        Supported message types:
+            - {"type": "result", "success": true, "result": ...} -> captures result
+            - {"type": "result", "success": false, "error": {...}} -> captures error
+            - {"type": "pong"} -> captures None result
+            - {"type": "event", ...} -> raises NotImplementedError
         """
-        raise NotImplementedError(
-            "send_message not supported for internal command invocation"
-        )
+        import orjson
+
+        # Parse to dict
+        msg_dict: dict[str, object]
+        try:
+            if isinstance(message, (bytes, str)):
+                msg_dict = orjson.loads(message)
+            else:
+                msg_dict = message
+        except orjson.JSONDecodeError as err:
+            self.error = ("json_error", f"Failed to parse message: {err}")
+            self._result_event.set()
+            return
+
+        msg_type = msg_dict.get("type")
+
+        if msg_type == "result":
+            if msg_dict.get("success", False):
+                self.result = msg_dict.get("result")
+            else:
+                error = msg_dict.get("error", {})
+                if isinstance(error, dict):
+                    code = str(error.get("code", "unknown"))
+                    error_msg = str(error.get("message", "Unknown error"))
+                else:
+                    code = "unknown"
+                    error_msg = str(error) if error else "Unknown error"
+                self.error = (code, error_msg)
+            self._result_event.set()
+        elif msg_type == "pong":
+            # Pong response - treat as success with no data
+            self.result = None
+            self._result_event.set()
+        elif msg_type == "event":
+            raise NotImplementedError(
+                "send_message with type 'event' not supported - "
+                "subscriptions are filtered"
+            )
+        else:
+            raise NotImplementedError(
+                f"send_message with type '{msg_type}' not supported "
+                "for internal command invocation"
+            )
 
     def send_event(self, msg_id: int, event: object = None) -> None:
         """Not supported --- subscription commands are filtered.
