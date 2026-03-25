@@ -350,6 +350,103 @@ class TestIncomingRequestConstruction:
         assert resp.status == 200
 
 
+class TestUserIdentityExtraction:
+    """Test that user_name is extracted from the hass_user request attribute."""
+
+    async def test_user_name_passed_to_instructions_factory(
+        self,
+        session_manager: SessionManager,
+        effect_handler: MockEffectHandler,
+    ) -> None:
+        """Verify user_name flows from hass_user to the instructions factory."""
+        calls: list[tuple[str | None, str | None]] = []
+
+        def factory(user_id: str | None, user_name: str | None) -> str:
+            calls.append((user_id, user_name))
+            return f"user={user_name}"
+
+        # Rebuild manager with instructions_factory
+        manager = SessionManager(
+            ServerInfo(name="test-server", version="1.0.0"),
+            session_id_factory=lambda: "sid-auth",
+            instructions_factory=factory,
+        )
+        registry = GroupRegistry()
+        manager.update_registry(registry)
+        transport = AiohttpMCPTransport(manager, effect_handler)
+
+        # Inject a mock hass_user via middleware
+        class _FakeUser:
+            id = "user-42"
+            name = "Kyle"
+
+        @web.middleware
+        async def inject_user(
+            request: web.Request,
+            handler: object,
+        ) -> web.StreamResponse:
+            request["hass_user"] = _FakeUser()
+            result = await handler(request)  # type: ignore[operator]
+            assert isinstance(result, web.StreamResponse)
+            return result
+
+        app = web.Application(middlewares=[inject_user])
+        app.router.add_route("*", "/mcp", transport.handle)
+        server = TestServer(app)
+        client: TestClient[web.Request, web.Application] = TestClient(server)
+        await client.start_server()
+        try:
+            resp = await client.post(
+                "/mcp",
+                json=_make_jsonrpc("initialize", {"protocolVersion": "2025-03-26"}),
+                headers={"Content-Type": "application/json"},
+            )
+            assert resp.status == 200
+            assert calls == [("user-42", "Kyle")]
+
+            body = await resp.json()
+            assert body["result"]["instructions"] == "user=Kyle"
+        finally:
+            await client.close()
+
+    async def test_no_user_yields_none(
+        self,
+        session_manager: SessionManager,
+        effect_handler: MockEffectHandler,
+    ) -> None:
+        """Without hass_user, user_id and user_name are None."""
+        calls: list[tuple[str | None, str | None]] = []
+
+        def factory(user_id: str | None, user_name: str | None) -> str:
+            calls.append((user_id, user_name))
+            return "anon"
+
+        manager = SessionManager(
+            ServerInfo(name="test-server", version="1.0.0"),
+            session_id_factory=lambda: "sid-anon",
+            instructions_factory=factory,
+        )
+        registry = GroupRegistry()
+        manager.update_registry(registry)
+        transport = AiohttpMCPTransport(manager, effect_handler)
+
+        app = web.Application()
+        app.router.add_route("*", "/mcp", transport.handle)
+        server = TestServer(app)
+        client: TestClient[web.Request, web.Application] = TestClient(server)
+        await client.start_server()
+        try:
+            resp = await client.post(
+                "/mcp",
+                json=_make_jsonrpc("initialize", {"protocolVersion": "2025-03-26"}),
+                headers={"Content-Type": "application/json"},
+            )
+            assert resp.status == 200
+            assert calls == [(None, None)]
+        finally:
+            await client.close()
+
+
 class TestEffectDispatch:
     """Test effect dispatch behavior."""
 

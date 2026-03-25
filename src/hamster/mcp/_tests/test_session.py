@@ -43,6 +43,7 @@ def make_request(
     host: str = "localhost:8123",
     session_id: str | None = None,
     user_id: str | None = None,
+    user_name: str | None = None,
 ) -> IncomingRequest:
     """Create an IncomingRequest for testing."""
     if body is None:
@@ -61,6 +62,7 @@ def make_request(
         session_id=session_id,
         body=body_bytes,
         user_id=user_id,
+        user_name=user_name,
     )
 
 
@@ -267,6 +269,44 @@ class TestMCPServerSessionVersionNegotiation:
         result = session.handle(msg, registry, user_id=None)
         assert isinstance(result, SessionError)
         assert result.code == INVALID_PARAMS
+
+
+class TestMCPServerSessionInstructions:
+    """Tests for instructions in initialize response."""
+
+    def test_instructions_included_when_provided(self) -> None:
+        from hamster.mcp._core.jsonrpc import JsonRpcRequest
+
+        info = ServerInfo(name="test", version="1.0")
+        session = MCPServerSession(
+            info, ServerCapabilities(), instructions="HA at http://ha.local:8123"
+        )
+        registry = GroupRegistry()
+
+        msg = JsonRpcRequest(
+            id=1, method="initialize", params={"protocolVersion": "2025-03-26"}
+        )
+        result = session.handle(msg, registry, user_id=None)
+        assert isinstance(result, SessionResponse)
+        inner = result.body["result"]
+        assert isinstance(inner, dict)
+        assert inner["instructions"] == "HA at http://ha.local:8123"
+
+    def test_instructions_omitted_when_none(self) -> None:
+        from hamster.mcp._core.jsonrpc import JsonRpcRequest
+
+        info = ServerInfo(name="test", version="1.0")
+        session = MCPServerSession(info, ServerCapabilities())
+        registry = GroupRegistry()
+
+        msg = JsonRpcRequest(
+            id=1, method="initialize", params={"protocolVersion": "2025-03-26"}
+        )
+        result = session.handle(msg, registry, user_id=None)
+        assert isinstance(result, SessionResponse)
+        inner = result.body["result"]
+        assert isinstance(inner, dict)
+        assert "instructions" not in inner
 
 
 class TestMCPServerSessionToolsCall:
@@ -1021,3 +1061,109 @@ class TestHappyPath:
         )
         assert isinstance(call_result, RunEffects)
         assert call_result.request_id == 1
+
+
+class TestSessionManagerInstructionsFactory:
+    """Tests for instructions_factory on SessionManager."""
+
+    def test_factory_called_with_user_identity(self) -> None:
+        """Factory receives user_id and user_name from the initialize request."""
+        calls: list[tuple[str | None, str | None]] = []
+
+        def factory(user_id: str | None, user_name: str | None) -> str:
+            calls.append((user_id, user_name))
+            return f"Hello {user_name}"
+
+        manager = SessionManager(
+            ServerInfo(name="test", version="1.0"),
+            session_id_factory=lambda: "sid-1",
+            instructions_factory=factory,
+        )
+
+        init_body = make_jsonrpc_request(
+            "initialize", {"protocolVersion": "2025-03-26"}
+        )
+        result = manager.receive_request(
+            make_request(body=init_body, user_id="uid-1", user_name="Kyle"),
+            now=0.0,
+        )
+        assert isinstance(result, SendResponse)
+        assert result.status == 200
+        assert calls == [("uid-1", "Kyle")]
+
+        # Verify instructions appear in the response
+        assert result.body is not None
+        inner = result.body["result"]
+        assert isinstance(inner, dict)
+        assert inner["instructions"] == "Hello Kyle"
+
+    def test_no_factory_means_no_instructions(self) -> None:
+        """Without a factory, initialize response has no instructions key."""
+        manager = SessionManager(
+            ServerInfo(name="test", version="1.0"),
+            session_id_factory=lambda: "sid-1",
+        )
+
+        init_body = make_jsonrpc_request(
+            "initialize", {"protocolVersion": "2025-03-26"}
+        )
+        result = manager.receive_request(
+            make_request(body=init_body, user_id="uid-1", user_name="Kyle"),
+            now=0.0,
+        )
+        assert isinstance(result, SendResponse)
+        assert result.body is not None
+        inner = result.body["result"]
+        assert isinstance(inner, dict)
+        assert "instructions" not in inner
+
+    def test_factory_returning_none_omits_instructions(self) -> None:
+        """A factory that returns None produces no instructions key."""
+        manager = SessionManager(
+            ServerInfo(name="test", version="1.0"),
+            session_id_factory=lambda: "sid-1",
+            instructions_factory=lambda uid, uname: None,
+        )
+
+        init_body = make_jsonrpc_request(
+            "initialize", {"protocolVersion": "2025-03-26"}
+        )
+        result = manager.receive_request(
+            make_request(body=init_body),
+            now=0.0,
+        )
+        assert isinstance(result, SendResponse)
+        assert result.body is not None
+        inner = result.body["result"]
+        assert isinstance(inner, dict)
+        assert "instructions" not in inner
+
+    def test_factory_called_per_session(self) -> None:
+        """Each new session calls the factory independently."""
+        counter = [0]
+
+        def counting_factory(user_id: str | None, user_name: str | None) -> str:
+            counter[0] += 1
+            return f"Session {counter[0]}"
+
+        sid = [0]
+        manager = SessionManager(
+            ServerInfo(name="test", version="1.0"),
+            session_id_factory=lambda: (
+                f"sid-{(sid.__setitem__(0, sid[0] + 1), sid[0])[1]}"
+            ),
+            instructions_factory=counting_factory,
+        )
+
+        for i in range(1, 4):
+            init_body = make_jsonrpc_request(
+                "initialize", {"protocolVersion": "2025-03-26"}, request_id=i
+            )
+            result = manager.receive_request(make_request(body=init_body), now=float(i))
+            assert isinstance(result, SendResponse)
+            assert result.body is not None
+            inner = result.body["result"]
+            assert isinstance(inner, dict)
+            assert inner["instructions"] == f"Session {i}"
+
+        assert counter[0] == 3

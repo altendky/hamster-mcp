@@ -157,10 +157,11 @@ class AiohttpMCPTransport:
 
         body = await request.read()
 
-        # Extract user_id from HA's authenticated request
+        # Extract user identity from HA's authenticated request
         # HA stores the authenticated user on the request via middleware
         user = request.get("hass_user")
         user_id = user.id if user else None
+        user_name = user.name if user else None
 
         incoming = IncomingRequest(
             http_method=request.method,
@@ -171,6 +172,7 @@ class AiohttpMCPTransport:
             session_id=request.headers.get("Mcp-Session-Id"),
             body=body,
             user_id=user_id,
+            user_name=user_name,
         )
 
         result = self._manager.receive_request(incoming, now=time.monotonic())

@@ -94,12 +94,16 @@ class MCPServerSession:
     """
 
     def __init__(
-        self, server_info: ServerInfo, capabilities: ServerCapabilities
+        self,
+        server_info: ServerInfo,
+        capabilities: ServerCapabilities,
+        instructions: str | None = None,
     ) -> None:
         """Initialize a new session."""
         self._state = SessionState.IDLE
         self._server_info = server_info
         self._capabilities = capabilities
+        self._instructions = instructions
         self._negotiated_version: str | None = None
 
     @property
@@ -196,6 +200,7 @@ class MCPServerSession:
                 self._server_info,
                 self._capabilities,
                 self._negotiated_version,
+                instructions=self._instructions,
             )
         )
 
@@ -312,6 +317,8 @@ class SessionManager:
         idle_timeout: float = 1800.0,
         session_id_factory: Callable[[], str] | None = None,
         debounce_delay: float = 0.5,
+        instructions_factory: Callable[[str | None, str | None], str | None]
+        | None = None,
     ) -> None:
         """Initialize the session manager.
 
@@ -320,12 +327,16 @@ class SessionManager:
             idle_timeout: Session idle timeout in seconds (default 30 minutes)
             session_id_factory: Factory for generating session IDs
             debounce_delay: Delay for service index regeneration debouncing
+            instructions_factory: Callable taking (user_id, user_name) that
+                returns an MCP instructions string, or None.  Called once per
+                session at initialize time.
         """
         self._server_info = server_info
         self._capabilities = ServerCapabilities()
         self._idle_timeout = idle_timeout
         self._session_id_factory = session_id_factory or (lambda: secrets.token_hex(16))
         self._debounce_delay = debounce_delay
+        self._instructions_factory = instructions_factory
 
         self._sessions: dict[str, MCPServerSession] = {}
         self._last_activity: dict[str, float] = {}
@@ -430,8 +441,12 @@ class SessionManager:
         parsed = parse_batch(body)
 
         if isinstance(parsed, list):
-            return self._handle_batch(parsed, request.session_id, now, request.user_id)
-        return self._handle_single(parsed, request.session_id, now, request.user_id)
+            return self._handle_batch(
+                parsed, request.session_id, now, request.user_id, request.user_name
+            )
+        return self._handle_single(
+            parsed, request.session_id, now, request.user_id, request.user_name
+        )
 
     def _handle_delete(self, request: IncomingRequest) -> SendResponse:
         """Handle DELETE request (session termination)."""
@@ -495,6 +510,7 @@ class SessionManager:
         session_id: str | None,
         now: float,
         user_id: str | None,
+        user_name: str | None,
     ) -> ReceiveResult:
         """Handle a single JSON-RPC message."""
         # Handle parse errors
@@ -514,7 +530,7 @@ class SessionManager:
             )
 
         # Route message
-        return self._route_message(parsed, session_id, now, user_id)
+        return self._route_message(parsed, session_id, now, user_id, user_name)
 
     def _handle_batch(
         self,
@@ -524,6 +540,7 @@ class SessionManager:
         session_id: str | None,
         now: float,
         user_id: str | None,
+        user_name: str | None,
     ) -> ReceiveResult | list[ReceiveResult]:
         """Handle a batch of JSON-RPC messages."""
         # Check for initialize in batch (not allowed)
@@ -539,7 +556,7 @@ class SessionManager:
 
         results: list[ReceiveResult] = []
         for parsed in parsed_list:
-            result = self._handle_single(parsed, session_id, now, user_id)
+            result = self._handle_single(parsed, session_id, now, user_id, user_name)
             # Notifications don't get responses in batch
             if (
                 isinstance(parsed, JsonRpcNotification)
@@ -561,12 +578,13 @@ class SessionManager:
         session_id: str | None,
         now: float,
         user_id: str | None,
+        user_name: str | None,
     ) -> ReceiveResult:
         """Route a message to the appropriate session."""
         if session_id is None:
             # No session - must be initialize
             if message.method == "initialize":
-                return self._create_session_and_handle(message, now, user_id)
+                return self._create_session_and_handle(message, now, user_id, user_name)
             return SendResponse(
                 status=400,
                 headers={"Content-Type": "application/json"},
@@ -604,6 +622,7 @@ class SessionManager:
         message: JsonRpcRequest | JsonRpcNotification,
         now: float,
         user_id: str | None,
+        user_name: str | None,
     ) -> ReceiveResult:
         """Create a new session and handle the initialize request."""
         # Generate session ID
@@ -613,8 +632,17 @@ class SessionManager:
         if not self._is_valid_session_id(session_id):
             raise ValueError(f"Invalid session ID from factory: {session_id!r}")
 
+        # Build per-session instructions via the factory
+        instructions = (
+            self._instructions_factory(user_id, user_name)
+            if self._instructions_factory is not None
+            else None
+        )
+
         # Create session
-        session = MCPServerSession(self._server_info, self._capabilities)
+        session = MCPServerSession(
+            self._server_info, self._capabilities, instructions=instructions
+        )
         self._sessions[session_id] = session
         self._last_activity[session_id] = now
 

@@ -272,16 +272,17 @@ def build_initialize_response(
     server_info: ServerInfo,
     capabilities: ServerCapabilities,
     protocol_version: str,
+    instructions: str | None = None,
 ) -> dict[str, object]:
     """Build full initialization response."""
-    return make_success_response(
-        request_id,
-        {
-            "protocolVersion": protocol_version,
-            "capabilities": serialize_capabilities(capabilities),
-            "serverInfo": serialize_server_info(server_info),
-        },
-    )
+    result: dict[str, object] = {
+        "protocolVersion": protocol_version,
+        "capabilities": serialize_capabilities(capabilities),
+        "serverInfo": serialize_server_info(server_info),
+    }
+    if instructions is not None:
+        result["instructions"] = instructions
+    return make_success_response(request_id, result)
 
 
 def build_tool_list_response(
