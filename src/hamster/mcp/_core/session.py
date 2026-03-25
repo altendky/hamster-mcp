@@ -34,8 +34,8 @@ from .jsonrpc import (
     make_error_response,
     parse_batch,
 )
-from .resources import RESOURCES as _RESOURCE_ENTRIES
-from .resources import read_resource as _read_resource_entry
+from .resources import ResourceEntry
+from .resources import read_resource as _read_resource
 from .tools import TOOLS, call_tool
 from .types import (
     CallToolResult,
@@ -108,12 +108,14 @@ class MCPServerSession:
         self,
         server_info: ServerInfo,
         capabilities: ServerCapabilities,
+        resources: tuple[ResourceEntry, ...],
         instructions: str | None = None,
     ) -> None:
         """Initialize a new session."""
         self._state = SessionState.IDLE
         self._server_info = server_info
         self._capabilities = capabilities
+        self._resources = resources
         self._instructions = instructions
         self._negotiated_version: str | None = None
 
@@ -301,7 +303,7 @@ class MCPServerSession:
             )
 
         # Dispatch to tool
-        effect = call_tool(name, arguments, registry, user_id)
+        effect = call_tool(name, arguments, registry, user_id, self._resources)
         return SessionToolCall(request_id=message.id, effect=effect)
 
     def _handle_resources_list(
@@ -316,7 +318,7 @@ class MCPServerSession:
                 description=entry.description,
                 mime_type="text/markdown",
             )
-            for entry in _RESOURCE_ENTRIES
+            for entry in self._resources
         )
         return SessionResponse(
             body=build_resource_list_response(message.id, mcp_resources)
@@ -336,7 +338,7 @@ class MCPServerSession:
                 request_id=message.id,
             )
 
-        entry = _read_resource_entry(uri)
+        entry = _read_resource(self._resources, uri)
         if entry is None:
             return SessionError(
                 code=INVALID_PARAMS,
@@ -380,6 +382,7 @@ class SessionManager:
     def __init__(
         self,
         server_info: ServerInfo,
+        resources: tuple[ResourceEntry, ...],
         idle_timeout: float = 1800.0,
         session_id_factory: Callable[[], str] | None = None,
         debounce_delay: float = 0.5,
@@ -390,6 +393,7 @@ class SessionManager:
 
         Args:
             server_info: Server identification
+            resources: Pre-loaded static resource entries
             idle_timeout: Session idle timeout in seconds (default 30 minutes)
             session_id_factory: Factory for generating session IDs
             debounce_delay: Delay for service index regeneration debouncing
@@ -398,6 +402,7 @@ class SessionManager:
                 session at initialize time.
         """
         self._server_info = server_info
+        self._resources = resources
         self._capabilities = ServerCapabilities()
         self._idle_timeout = idle_timeout
         self._session_id_factory = session_id_factory or (lambda: secrets.token_hex(16))
@@ -710,7 +715,10 @@ class SessionManager:
 
         # Create session
         session = MCPServerSession(
-            self._server_info, self._capabilities, instructions=instructions
+            self._server_info,
+            self._capabilities,
+            self._resources,
+            instructions=instructions,
         )
         self._sessions[session_id] = session
         self._last_activity[session_id] = now

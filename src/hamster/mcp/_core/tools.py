@@ -18,8 +18,8 @@ from .events import (
     FormatSupervisorResponse,
     ToolEffect,
 )
-from .resources import RESOURCES as _RESOURCE_ENTRIES
-from .resources import read_resource as _read_resource_entry
+from .resources import ResourceEntry
+from .resources import read_resource as _read_resource
 from .types import (
     CallToolResult,
     HassCommandResult,
@@ -185,6 +185,7 @@ def call_tool(
     arguments: dict[str, object],
     registry: GroupRegistry,
     user_id: str | None,
+    resources: tuple[ResourceEntry, ...],
 ) -> ToolEffect:
     """Dispatch a tool call by name.
 
@@ -193,6 +194,7 @@ def call_tool(
         arguments: Tool arguments
         registry: Group registry with registered source groups
         user_id: Authenticated user ID for authorization
+        resources: Pre-loaded static resource entries
 
     Returns:
         ToolEffect (Done for immediate results, effect for I/O)
@@ -206,9 +208,9 @@ def call_tool(
     if name == "schema":
         return _call_schema(arguments, registry)
     if name == "list_resources":
-        return _call_list_resources()
+        return _call_list_resources(resources)
     if name == "read_resource":
-        return _call_read_resource(arguments)
+        return _call_read_resource(arguments, resources)
     return _make_error(f"Unknown tool: {name}")
 
 
@@ -275,9 +277,9 @@ def _call_call(
     return group.parse_call_args(in_group_path, call_arguments, user_id)
 
 
-def _call_list_resources() -> ToolEffect:
+def _call_list_resources(resources: tuple[ResourceEntry, ...]) -> ToolEffect:
     """Handle list_resources tool."""
-    entries = _RESOURCE_ENTRIES
+    entries = resources
     if not entries:
         return _make_text("No resources available.")
 
@@ -288,17 +290,19 @@ def _call_list_resources() -> ToolEffect:
     return _make_text("\n".join(lines))
 
 
-def _call_read_resource(arguments: dict[str, object]) -> ToolEffect:
+def _call_read_resource(
+    arguments: dict[str, object], resources: tuple[ResourceEntry, ...]
+) -> ToolEffect:
     """Handle read_resource tool."""
     uri = arguments.get("uri")
     if not isinstance(uri, str):
         return _make_error("Missing or invalid 'uri' parameter (must be a string)")
 
-    entry = _read_resource_entry(uri)
+    entry = _read_resource(resources, uri)
     if entry is not None:
         return _make_text(entry.content)
 
-    available = ", ".join(e.uri for e in _RESOURCE_ENTRIES)
+    available = ", ".join(e.uri for e in resources)
     return _make_error(f"Resource not found: {uri}. Available URIs: {available}")
 
 

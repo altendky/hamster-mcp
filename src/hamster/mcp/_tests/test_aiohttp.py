@@ -122,6 +122,7 @@ def session_manager(session_counter: list[int]) -> SessionManager:
     server_info = ServerInfo(name="test-server", version="1.0.0")
     manager = SessionManager(
         server_info=server_info,
+        resources=(),
         idle_timeout=1800.0,
         session_id_factory=factory,
     )
@@ -370,6 +371,7 @@ class TestUserIdentityExtraction:
         # Rebuild manager with instructions_factory
         manager = SessionManager(
             ServerInfo(name="test-server", version="1.0.0"),
+            resources=(),
             session_id_factory=lambda: "sid-auth",
             instructions_factory=factory,
         )
@@ -425,6 +427,7 @@ class TestUserIdentityExtraction:
 
         manager = SessionManager(
             ServerInfo(name="test-server", version="1.0.0"),
+            resources=(),
             session_id_factory=lambda: "sid-anon",
             instructions_factory=factory,
         )
@@ -661,6 +664,7 @@ class TestWakeupLoop:
         server_info = ServerInfo(name="test-server", version="1.0.0")
         manager = SessionManager(
             server_info=server_info,
+            resources=(),
             idle_timeout=1800.0,
             debounce_delay=0.05,  # Short debounce for testing
         )
@@ -704,6 +708,7 @@ class TestWakeupLoop:
 
         manager = SessionManager(
             server_info=server_info,
+            resources=(),
             idle_timeout=0.05,  # Very short timeout for testing
             session_id_factory=factory,
         )
@@ -795,6 +800,7 @@ class TestWakeupLoopErrorResilience:
         server_info = ServerInfo(name="test-server", version="1.0.0")
         manager = SessionManager(
             server_info=server_info,
+            resources=(),
             idle_timeout=1800.0,
             debounce_delay=0.5,
         )
@@ -844,6 +850,7 @@ class TestWakeupLoopErrorResilience:
         server_info = ServerInfo(name="test-server", version="1.0.0")
         manager = SessionManager(
             server_info=server_info,
+            resources=(),
             idle_timeout=1800.0,
             debounce_delay=0.02,
         )

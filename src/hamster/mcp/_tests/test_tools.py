@@ -79,7 +79,9 @@ class TestCallTool:
 
     def test_search_returns_done(self) -> None:
         registry = self._make_registry()
-        result = call_tool("search", {"query": "light"}, registry, user_id=None)
+        result = call_tool(
+            "search", {"query": "light"}, registry, user_id=None, resources=()
+        )
         assert isinstance(result, Done)
         assert result.result.content[0].text  # type: ignore[union-attr]
 
@@ -90,6 +92,7 @@ class TestCallTool:
             {"query": "turn", "path_filter": "services"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
@@ -102,6 +105,7 @@ class TestCallTool:
             {"query": "turn", "path_filter": "services/light"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
@@ -116,6 +120,7 @@ class TestCallTool:
             {"path": "services/light.turn_on"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert not result.result.is_error
@@ -127,6 +132,7 @@ class TestCallTool:
             {"path": "services/light.nonexistent"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -138,6 +144,7 @@ class TestCallTool:
             {"path": "unknown/foo"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -149,6 +156,7 @@ class TestCallTool:
             {"path": "nogroup"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -162,6 +170,7 @@ class TestCallTool:
             {"path": ""},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -179,6 +188,7 @@ class TestCallTool:
             },
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, ServiceCall)
         assert result.domain == "light"
@@ -195,6 +205,7 @@ class TestCallTool:
             {"path": "services/light.nonexistent", "arguments": {}},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -206,6 +217,7 @@ class TestCallTool:
             {"path": "unknown/foo", "arguments": {}},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -217,6 +229,7 @@ class TestCallTool:
             {"path": "nogroup"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -228,6 +241,7 @@ class TestCallTool:
             {"path": "services/light.turn_on"},
             registry,
             user_id="test-user",
+            resources=(),
         )
         assert isinstance(result, ServiceCall)
         assert result.data == {}
@@ -240,13 +254,16 @@ class TestCallTool:
             {"path": "services/light.turn_on", "arguments": "invalid"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_search_empty_registry(self) -> None:
         registry = GroupRegistry()
-        result = call_tool("search", {"query": "anything"}, registry, user_id=None)
+        result = call_tool(
+            "search", {"query": "anything"}, registry, user_id=None, resources=()
+        )
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
         assert "No commands found" in text
@@ -258,6 +275,7 @@ class TestCallTool:
             {"path": "services/selector/boolean"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
@@ -286,6 +304,7 @@ class TestCallTool:
             {"path": "services/light.turn_on"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
@@ -298,13 +317,14 @@ class TestCallTool:
             {"path": "services/unknown.service"},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_unknown_tool_error(self) -> None:
         registry = self._make_registry()
-        result = call_tool("unknown_tool", {}, registry, user_id=None)
+        result = call_tool("unknown_tool", {}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
@@ -320,13 +340,15 @@ class TestCallToolArgumentValidation:
 
     def test_search_missing_query(self) -> None:
         registry = self._make_registry()
-        result = call_tool("search", {}, registry, user_id=None)
+        result = call_tool("search", {}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_search_query_wrong_type(self) -> None:
         registry = self._make_registry()
-        result = call_tool("search", {"query": 123}, registry, user_id=None)
+        result = call_tool(
+            "search", {"query": 123}, registry, user_id=None, resources=()
+        )
         assert isinstance(result, Done)
         assert result.result.is_error
 
@@ -337,43 +359,48 @@ class TestCallToolArgumentValidation:
             {"query": "test", "path_filter": 123},
             registry,
             user_id=None,
+            resources=(),
         )
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_explain_missing_path(self) -> None:
         registry = self._make_registry()
-        result = call_tool("explain", {}, registry, user_id=None)
+        result = call_tool("explain", {}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_explain_path_wrong_type(self) -> None:
         registry = self._make_registry()
-        result = call_tool("explain", {"path": 123}, registry, user_id=None)
+        result = call_tool(
+            "explain", {"path": 123}, registry, user_id=None, resources=()
+        )
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_call_missing_path(self) -> None:
         registry = self._make_registry()
-        result = call_tool("call", {}, registry, user_id=None)
+        result = call_tool("call", {}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_call_path_wrong_type(self) -> None:
         registry = self._make_registry()
-        result = call_tool("call", {"path": 123}, registry, user_id=None)
+        result = call_tool("call", {"path": 123}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_schema_missing_path(self) -> None:
         registry = self._make_registry()
-        result = call_tool("schema", {}, registry, user_id=None)
+        result = call_tool("schema", {}, registry, user_id=None, resources=())
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_schema_path_wrong_type(self) -> None:
         registry = self._make_registry()
-        result = call_tool("schema", {"path": 123}, registry, user_id=None)
+        result = call_tool(
+            "schema", {"path": 123}, registry, user_id=None, resources=()
+        )
         assert isinstance(result, Done)
         assert result.result.is_error
 

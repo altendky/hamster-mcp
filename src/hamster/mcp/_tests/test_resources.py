@@ -19,9 +19,7 @@ from hamster.mcp._core.jsonrpc import (
     serialize_resource_contents,
 )
 from hamster.mcp._core.resources import (
-    RESOURCES,
     ResourceEntry,
-    list_resources,
     read_resource,
 )
 from hamster.mcp._core.session import (
@@ -37,23 +35,27 @@ from hamster.mcp._core.types import (
     ServerCapabilities,
     ServerInfo,
 )
+from hamster.mcp._io.resources import load_all_resources
 
 # --- Resources module tests ---
 
 
 class TestResourcesModule:
-    """Tests for _core/resources/__init__.py."""
+    """Tests for _core/resources/__init__.py and _io/resources.py."""
 
     def test_resources_loaded(self) -> None:
         """At least one resource is loaded from the insights group."""
-        assert len(RESOURCES) > 0
+        resources = load_all_resources()
+        assert len(resources) > 0
 
     def test_all_entries_are_resource_entry(self) -> None:
-        for entry in RESOURCES:
+        resources = load_all_resources()
+        for entry in resources:
             assert isinstance(entry, ResourceEntry)
 
     def test_entry_fields_populated(self) -> None:
-        for entry in RESOURCES:
+        resources = load_all_resources()
+        for entry in resources:
             assert entry.group, "group must not be empty"
             assert entry.name, "name must not be empty"
             assert entry.title, "title must not be empty"
@@ -63,7 +65,8 @@ class TestResourcesModule:
 
     def test_uri_format(self) -> None:
         """URIs follow the group:name scheme."""
-        for entry in RESOURCES:
+        resources = load_all_resources()
+        for entry in resources:
             assert ":" in entry.uri
             group, name = entry.uri.split(":", 1)
             assert group == entry.group
@@ -71,29 +74,28 @@ class TestResourcesModule:
 
     def test_expected_insights(self) -> None:
         """Expected insight documents are present."""
-        uris = {e.uri for e in RESOURCES}
+        resources = load_all_resources()
+        uris = {e.uri for e in resources}
         assert "insights:service-targeting" in uris
         assert "insights:entity-ids" in uris
         assert "insights:selectors" in uris
 
-    def test_list_resources_returns_all(self) -> None:
-        result = list_resources()
-        assert result == RESOURCES
-        assert len(result) == 3
-
     def test_read_resource_found(self) -> None:
-        entry = read_resource("insights:service-targeting")
+        resources = load_all_resources()
+        entry = read_resource(resources, "insights:service-targeting")
         assert entry is not None
         assert entry.name == "service-targeting"
         assert "target" in entry.content.lower()
 
     def test_read_resource_not_found(self) -> None:
-        entry = read_resource("nonexistent:resource")
+        resources = load_all_resources()
+        entry = read_resource(resources, "nonexistent:resource")
         assert entry is None
 
     def test_content_is_markdown(self) -> None:
         """Resource content starts with a markdown heading."""
-        for entry in RESOURCES:
+        resources = load_all_resources()
+        for entry in resources:
             assert entry.content.startswith("#")
 
 
@@ -189,7 +191,8 @@ class TestBuildResourceResponses:
 def _make_active_session() -> tuple[MCPServerSession, GroupRegistry]:
     """Create a session in ACTIVE state."""
     info = ServerInfo(name="test", version="1.0")
-    session = MCPServerSession(info, ServerCapabilities())
+    resources = load_all_resources()
+    session = MCPServerSession(info, ServerCapabilities(), resources)
     registry = GroupRegistry()
 
     session.handle(
@@ -294,7 +297,10 @@ class TestListResourcesTool:
 
     def test_returns_resource_list(self) -> None:
         registry = GroupRegistry()
-        result = call_tool("list_resources", {}, registry, user_id=None)
+        resources = load_all_resources()
+        result = call_tool(
+            "list_resources", {}, registry, user_id=None, resources=resources
+        )
         assert isinstance(result, Done)
         assert not result.result.is_error
         text = result.result.content[0].text  # type: ignore[union-attr]
@@ -308,11 +314,13 @@ class TestReadResourceTool:
 
     def test_read_existing(self) -> None:
         registry = GroupRegistry()
+        resources = load_all_resources()
         result = call_tool(
             "read_resource",
             {"uri": "insights:selectors"},
             registry,
             user_id=None,
+            resources=resources,
         )
         assert isinstance(result, Done)
         assert not result.result.is_error
@@ -321,11 +329,13 @@ class TestReadResourceTool:
 
     def test_read_nonexistent(self) -> None:
         registry = GroupRegistry()
+        resources = load_all_resources()
         result = call_tool(
             "read_resource",
             {"uri": "nonexistent:thing"},
             registry,
             user_id=None,
+            resources=resources,
         )
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -335,13 +345,19 @@ class TestReadResourceTool:
 
     def test_missing_uri_param(self) -> None:
         registry = GroupRegistry()
-        result = call_tool("read_resource", {}, registry, user_id=None)
+        resources = load_all_resources()
+        result = call_tool(
+            "read_resource", {}, registry, user_id=None, resources=resources
+        )
         assert isinstance(result, Done)
         assert result.result.is_error
 
     def test_uri_wrong_type(self) -> None:
         registry = GroupRegistry()
-        result = call_tool("read_resource", {"uri": 42}, registry, user_id=None)
+        resources = load_all_resources()
+        result = call_tool(
+            "read_resource", {"uri": 42}, registry, user_id=None, resources=resources
+        )
         assert isinstance(result, Done)
         assert result.result.is_error
 
@@ -357,7 +373,8 @@ class TestCapabilitiesIncludeResources:
         _session, registry = _make_active_session()
         # Re-create session to inspect init response
         info = ServerInfo(name="test", version="1.0")
-        session2 = MCPServerSession(info, ServerCapabilities())
+        resources = load_all_resources()
+        session2 = MCPServerSession(info, ServerCapabilities(), resources)
         msg = JsonRpcRequest(
             id=1, method="initialize", params={"protocolVersion": "2025-03-26"}
         )
