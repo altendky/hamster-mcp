@@ -27,13 +27,24 @@ from .jsonrpc import (
     JsonRpcRequest,
     JsonRpcResponse,
     build_initialize_response,
+    build_resource_list_response,
+    build_resource_read_response,
     build_tool_list_response,
     build_tool_result_response,
     make_error_response,
     parse_batch,
 )
+from .resources import ResourceEntry
+from .resources import read_resource as _read_resource
 from .tools import TOOLS, call_tool
-from .types import CallToolResult, JsonRpcId, ServerCapabilities, ServerInfo
+from .types import (
+    CallToolResult,
+    JsonRpcId,
+    Resource,
+    ResourceContents,
+    ServerCapabilities,
+    ServerInfo,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -97,12 +108,14 @@ class MCPServerSession:
         self,
         server_info: ServerInfo,
         capabilities: ServerCapabilities,
+        resources: tuple[ResourceEntry, ...],
         instructions: str | None = None,
     ) -> None:
         """Initialize a new session."""
         self._state = SessionState.IDLE
         self._server_info = server_info
         self._capabilities = capabilities
+        self._resources = resources
         self._instructions = instructions
         self._negotiated_version: str | None = None
 
@@ -238,6 +251,12 @@ class MCPServerSession:
         if method == "tools/call":
             return self._handle_tools_call(message, registry, user_id)
 
+        if method == "resources/list":
+            return self._handle_resources_list(message)
+
+        if method == "resources/read":
+            return self._handle_resources_read(message)
+
         # Unknown method
         return SessionError(
             code=METHOD_NOT_FOUND,
@@ -284,8 +303,57 @@ class MCPServerSession:
             )
 
         # Dispatch to tool
-        effect = call_tool(name, arguments, registry, user_id)
+        effect = call_tool(name, arguments, registry, user_id, self._resources)
         return SessionToolCall(request_id=message.id, effect=effect)
+
+    def _handle_resources_list(
+        self,
+        message: JsonRpcRequest,
+    ) -> SessionResult:
+        """Handle resources/list request."""
+        mcp_resources = tuple(
+            Resource(
+                uri=entry.uri,
+                name=entry.name,
+                description=entry.description,
+                mime_type="text/markdown",
+            )
+            for entry in self._resources
+        )
+        return SessionResponse(
+            body=build_resource_list_response(message.id, mcp_resources)
+        )
+
+    def _handle_resources_read(
+        self,
+        message: JsonRpcRequest,
+    ) -> SessionResult:
+        """Handle resources/read request."""
+        params = message.params
+        uri = params.get("uri")
+        if not isinstance(uri, str):
+            return SessionError(
+                code=INVALID_PARAMS,
+                message="Missing or invalid 'uri' in resources/read params",
+                request_id=message.id,
+            )
+
+        entry = _read_resource(self._resources, uri)
+        if entry is None:
+            return SessionError(
+                code=INVALID_PARAMS,
+                message=f"Resource not found: {uri}",
+                request_id=message.id,
+            )
+
+        contents = (
+            ResourceContents(
+                uri=entry.uri,
+                text=entry.content,
+                mime_type="text/markdown",
+            ),
+        )
+        return SessionResponse(body=build_resource_read_response(message.id, contents))
 
     def close(self) -> None:
         """Close the session."""
@@ -314,6 +382,7 @@ class SessionManager:
     def __init__(
         self,
         server_info: ServerInfo,
+        resources: tuple[ResourceEntry, ...],
         idle_timeout: float = 1800.0,
         session_id_factory: Callable[[], str] | None = None,
         debounce_delay: float = 0.5,
@@ -324,6 +393,7 @@ class SessionManager:
 
         Args:
             server_info: Server identification
+            resources: Pre-loaded static resource entries
             idle_timeout: Session idle timeout in seconds (default 30 minutes)
             session_id_factory: Factory for generating session IDs
             debounce_delay: Delay for service index regeneration debouncing
@@ -332,6 +402,7 @@ class SessionManager:
                 session at initialize time.
         """
         self._server_info = server_info
+        self._resources = resources
         self._capabilities = ServerCapabilities()
         self._idle_timeout = idle_timeout
         self._session_id_factory = session_id_factory or (lambda: secrets.token_hex(16))
@@ -644,7 +715,10 @@ class SessionManager:
 
         # Create session
         session = MCPServerSession(
-            self._server_info, self._capabilities, instructions=instructions
+            self._server_info,
+            self._capabilities,
+            self._resources,
+            instructions=instructions,
         )
         self._sessions[session_id] = session
         self._last_activity[session_id] = now

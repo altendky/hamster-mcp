@@ -97,14 +97,14 @@ class TestMCPServerSessionState:
 
     def test_initial_state_idle(self) -> None:
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         assert session.state == SessionState.IDLE
 
     def test_ping_in_idle(self) -> None:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(id=1, method="ping", params={})
@@ -116,7 +116,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(id=1, method="tools/list", params={})
@@ -128,7 +128,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(
@@ -142,7 +142,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcNotification, JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         # Initialize
@@ -161,7 +161,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         # Initialize
@@ -180,7 +180,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcNotification, JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         # Full init sequence
@@ -205,7 +205,7 @@ class TestMCPServerSessionState:
 
     def test_close_transitions_to_closed(self) -> None:
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         session.close()
         assert session.state == SessionState.CLOSED
 
@@ -213,7 +213,7 @@ class TestMCPServerSessionState:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
         session.close()
 
@@ -229,7 +229,7 @@ class TestMCPServerSessionVersionNegotiation:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(
@@ -245,7 +245,7 @@ class TestMCPServerSessionVersionNegotiation:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(
@@ -262,7 +262,7 @@ class TestMCPServerSessionVersionNegotiation:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(id=1, method="initialize", params={})
@@ -279,7 +279,7 @@ class TestMCPServerSessionInstructions:
 
         info = ServerInfo(name="test", version="1.0")
         session = MCPServerSession(
-            info, ServerCapabilities(), instructions="HA at http://ha.local:8123"
+            info, ServerCapabilities(), (), instructions="HA at http://ha.local:8123"
         )
         registry = GroupRegistry()
 
@@ -296,7 +296,7 @@ class TestMCPServerSessionInstructions:
         from hamster.mcp._core.jsonrpc import JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
 
         msg = JsonRpcRequest(
@@ -316,7 +316,7 @@ class TestMCPServerSessionToolsCall:
         from hamster.mcp._core.jsonrpc import JsonRpcNotification, JsonRpcRequest
 
         info = ServerInfo(name="test", version="1.0")
-        session = MCPServerSession(info, ServerCapabilities())
+        session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
         group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
@@ -394,14 +394,14 @@ class TestSessionManagerHTTPValidation:
     """Tests for HTTP-level validation."""
 
     def test_wrong_content_type(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(body={}, content_type="text/plain")
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 415
 
     def test_content_type_with_charset(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, content_type="application/json; charset=utf-8")
         result = manager.receive_request(req, now=0.0)
@@ -409,7 +409,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_accept_absent_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept=None)
         result = manager.receive_request(req, now=0.0)
@@ -417,7 +417,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_accept_empty_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept="")
         result = manager.receive_request(req, now=0.0)
@@ -425,7 +425,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 406
 
     def test_accept_text_html_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept="text/html")
         result = manager.receive_request(req, now=0.0)
@@ -433,7 +433,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 406
 
     def test_accept_application_json_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept="application/json")
         result = manager.receive_request(req, now=0.0)
@@ -441,7 +441,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_accept_wildcard_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept="*/*")
         result = manager.receive_request(req, now=0.0)
@@ -449,7 +449,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_accept_application_wildcard_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, accept="application/*")
         result = manager.receive_request(req, now=0.0)
@@ -457,7 +457,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_origin_absent_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, origin=None, host="localhost:8123")
         result = manager.receive_request(req, now=0.0)
@@ -465,7 +465,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_origin_matches_host_ok(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(
             body=body, origin="http://localhost:8123", host="localhost:8123"
@@ -475,7 +475,7 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_origin_mismatch_forbidden(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, origin="http://evil.com", host="localhost:8123")
         result = manager.receive_request(req, now=0.0)
@@ -483,28 +483,28 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 403
 
     def test_malformed_json_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(body="{invalid json")
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 400
 
     def test_empty_body_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(body=None)
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 400
 
     def test_non_object_json_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(body='"just a string"')
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 400
 
     def test_get_request_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(method="GET")
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
@@ -513,6 +513,7 @@ class TestSessionManagerHTTPValidation:
     def test_delete_valid_session(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "test-session",
         )
         # Create session
@@ -527,14 +528,14 @@ class TestSessionManagerHTTPValidation:
         assert result.status == 200
 
     def test_delete_unknown_session(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(method="DELETE", session_id="unknown")
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 404
 
     def test_delete_no_session_id(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(method="DELETE", session_id=None)
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
@@ -547,6 +548,7 @@ class TestSessionManagerBatch:
     def test_batch_two_requests(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
         )
         # Init first
@@ -573,6 +575,7 @@ class TestSessionManagerBatch:
     def test_batch_only_notifications(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
         )
         # Init
@@ -597,14 +600,14 @@ class TestSessionManagerBatch:
         assert result.status == 202
 
     def test_empty_batch_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         req = make_request(body=[])
         result = manager.receive_request(req, now=0.0)
         assert isinstance(result, SendResponse)
         assert result.status == 400
 
     def test_initialize_in_batch_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         batch = [make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})]
         req = make_request(body=batch)
         result = manager.receive_request(req, now=0.0)
@@ -616,7 +619,7 @@ class TestSessionManagerRouting:
     """Tests for session routing."""
 
     def test_no_session_id_init_creates_session(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
         req = make_request(body=body, session_id=None)
         result = manager.receive_request(req, now=0.0)
@@ -625,7 +628,7 @@ class TestSessionManagerRouting:
         assert "Mcp-Session-Id" in result.headers
 
     def test_no_session_id_non_init_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("tools/list")
         req = make_request(body=body, session_id=None)
         result = manager.receive_request(req, now=0.0)
@@ -633,7 +636,7 @@ class TestSessionManagerRouting:
         assert result.status == 400
 
     def test_unknown_session_id_error(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         body = make_jsonrpc_request("tools/list")
         req = make_request(body=body, session_id="unknown")
         result = manager.receive_request(req, now=0.0)
@@ -643,6 +646,7 @@ class TestSessionManagerRouting:
     def test_session_id_header_only_on_init(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess123",
         )
         # Init - should have header
@@ -671,7 +675,9 @@ class TestSessionManagerRouting:
             return f"sess-{counter[0]}"
 
         manager = SessionManager(
-            ServerInfo(name="test", version="1.0"), session_id_factory=factory
+            ServerInfo(name="test", version="1.0"),
+            resources=(),
+            session_id_factory=factory,
         )
 
         # Create two sessions
@@ -689,7 +695,7 @@ class TestSessionManagerRegistry:
     """Tests for group registry management."""
 
     def test_update_registry(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         registry = GroupRegistry()
         group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
@@ -703,6 +709,7 @@ class TestSessionManagerToolCallParams:
     def _make_active_manager(self) -> tuple[SessionManager, str]:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -767,6 +774,7 @@ class TestSessionManagerProgrammaticClose:
     def test_close_valid(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -783,7 +791,7 @@ class TestSessionManagerProgrammaticClose:
         assert result.status == 404
 
     def test_close_unknown(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         assert manager.close_session("unknown") is False
 
 
@@ -791,7 +799,7 @@ class TestSessionManagerEffectResponse:
     """Tests for build_effect_response()."""
 
     def test_basic(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         result = CallToolResult(content=(TextContent(text="done"),))
         response = manager.build_effect_response(42, result)
         assert isinstance(response, SendResponse)
@@ -802,6 +810,7 @@ class TestSessionManagerEffectResponse:
     def test_after_session_expired(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
             idle_timeout=0.0,  # Immediate expiry
         )
@@ -822,7 +831,7 @@ class TestSessionManagerWakeups:
     """Tests for check_wakeups()."""
 
     def test_no_sessions_no_debounce(self) -> None:
-        manager = SessionManager(ServerInfo(name="test", version="1.0"))
+        manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         expired, should_regen, wakeup = manager.check_wakeups(now=0.0)
         assert expired == []
         assert should_regen is False
@@ -831,6 +840,7 @@ class TestSessionManagerWakeups:
     def test_within_timeout_not_expired(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
             idle_timeout=100.0,
         )
@@ -845,6 +855,7 @@ class TestSessionManagerWakeups:
     def test_past_timeout_expired(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
             idle_timeout=100.0,
         )
@@ -858,6 +869,7 @@ class TestSessionManagerWakeups:
     def test_activity_pushback(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
             idle_timeout=100.0,
         )
@@ -884,6 +896,7 @@ class TestSessionManagerWakeups:
     def test_debounce_triggers(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             debounce_delay=1.0,
         )
         manager.notify_services_changed(now=0.0)
@@ -901,6 +914,7 @@ class TestSessionManagerWakeups:
     def test_debounce_reset(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             debounce_delay=1.0,
         )
         manager.notify_services_changed(now=0.0)
@@ -919,6 +933,7 @@ class TestSessionManagerConcurrency:
     def test_multiple_requests_before_response(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sess",
         )
         registry = GroupRegistry()
@@ -974,6 +989,7 @@ class TestSessionManagerSessionIdValidation:
     def test_valid_ascii(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "abc123",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -984,6 +1000,7 @@ class TestSessionManagerSessionIdValidation:
     def test_space_invalid(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "abc 123",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -993,6 +1010,7 @@ class TestSessionManagerSessionIdValidation:
     def test_control_char_invalid(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "abc\n123",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -1002,6 +1020,7 @@ class TestSessionManagerSessionIdValidation:
     def test_non_ascii_invalid(self) -> None:
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "café",
         )
         body = make_jsonrpc_request("initialize", {"protocolVersion": "2025-03-26"})
@@ -1015,6 +1034,7 @@ class TestHappyPath:
     def test_full_flow(self) -> None:
         manager = SessionManager(
             ServerInfo(name="hamster", version="1.0.0"),
+            resources=(),
             session_id_factory=lambda: "test-session-id",
         )
         registry = GroupRegistry()
@@ -1076,6 +1096,7 @@ class TestSessionManagerInstructionsFactory:
 
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sid-1",
             instructions_factory=factory,
         )
@@ -1101,6 +1122,7 @@ class TestSessionManagerInstructionsFactory:
         """Without a factory, initialize response has no instructions key."""
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sid-1",
         )
 
@@ -1121,6 +1143,7 @@ class TestSessionManagerInstructionsFactory:
         """A factory that returns None produces no instructions key."""
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: "sid-1",
             instructions_factory=lambda uid, uname: None,
         )
@@ -1149,6 +1172,7 @@ class TestSessionManagerInstructionsFactory:
         sid = [0]
         manager = SessionManager(
             ServerInfo(name="test", version="1.0"),
+            resources=(),
             session_id_factory=lambda: (
                 f"sid-{(sid.__setitem__(0, sid[0] + 1), sid[0])[1]}"
             ),

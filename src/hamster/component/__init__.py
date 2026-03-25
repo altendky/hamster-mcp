@@ -24,6 +24,7 @@ from hamster.mcp._core.session import SessionManager
 from hamster.mcp._core.supervisor_group import SupervisorGroup
 from hamster.mcp._core.types import ServerInfo
 from hamster.mcp._io.aiohttp import AiohttpMCPTransport
+from hamster.mcp._io.resources import load_all_resources
 
 from .const import DEFAULT_ENABLE_SERVICES_GROUP, DEFAULT_IDLE_TIMEOUT, DOMAIN
 from .http import HamsterEffectHandler, HamsterMCPView
@@ -228,8 +229,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             parts.append(f"Authenticated user: {user_name}")
         return "\n".join(parts)
 
+    # Load static resource documents (I/O happens here, not in _core)
+    resources = load_all_resources()
+
     manager = SessionManager(
         server_info=server_info,
+        resources=resources,
         idle_timeout=DEFAULT_IDLE_TIMEOUT,
         instructions_factory=build_instructions,
     )
