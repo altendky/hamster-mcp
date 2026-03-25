@@ -389,6 +389,27 @@ class TestBuildInitializeResponse:
         assert inner["protocolVersion"] == "2025-03-26"
         assert inner["capabilities"] == {"tools": {}}
         assert inner["serverInfo"] == {"name": "test", "version": "0.1"}
+        assert "instructions" not in inner
+
+    def test_with_instructions(self) -> None:
+        info = ServerInfo(name="test", version="0.1")
+        cap = ServerCapabilities(tools=ToolsCapability())
+        result = build_initialize_response(
+            1, info, cap, "2025-03-26", instructions="Use this server wisely."
+        )
+        inner = result["result"]
+        assert isinstance(inner, dict)
+        assert inner["instructions"] == "Use this server wisely."
+
+    def test_instructions_none_omitted(self) -> None:
+        info = ServerInfo(name="test", version="0.1")
+        cap = ServerCapabilities(tools=ToolsCapability())
+        result = build_initialize_response(
+            1, info, cap, "2025-03-26", instructions=None
+        )
+        inner = result["result"]
+        assert isinstance(inner, dict)
+        assert "instructions" not in inner
 
 
 class TestBuildToolListResponse:

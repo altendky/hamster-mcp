@@ -15,6 +15,7 @@ import time
 from typing import TYPE_CHECKING
 
 from homeassistant.const import EVENT_SERVICE_REGISTERED, EVENT_SERVICE_REMOVED
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.service import async_get_all_descriptions
 
 from hamster.mcp._core.groups import GroupRegistry, ServicesGroup
@@ -210,9 +211,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create components
     server_info = ServerInfo(name="hamster", version=_HAMSTER_VERSION)
+
+    def build_instructions(user_id: str | None, user_name: str | None) -> str | None:
+        """Build MCP instructions with current HA state.
+
+        Called once per session at initialize time so the base URL
+        reflects the current configuration without requiring a restart.
+        Returns None when no URL is available (e.g. during early startup).
+        """
+        try:
+            base_url = get_url(hass)
+        except NoURLAvailableError:
+            return None
+        parts = [f"Home Assistant instance URL: {base_url}"]
+        if user_name:
+            parts.append(f"Authenticated user: {user_name}")
+        return "\n".join(parts)
+
     manager = SessionManager(
         server_info=server_info,
         idle_timeout=DEFAULT_IDLE_TIMEOUT,
+        instructions_factory=build_instructions,
     )
 
     effect_handler = HamsterEffectHandler(hass)

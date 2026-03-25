@@ -143,3 +143,4 @@ class IncomingRequest:
     session_id: str | None  # From Mcp-Session-Id header
     body: bytes  # Raw request body
     user_id: str | None = None  # Authenticated user ID for authorization
+    user_name: str | None = None  # Authenticated user display name

@@ -455,3 +455,86 @@ async def test_event_listeners_cleaned_up_on_unload(
     final_removed = listeners.get(EVENT_SERVICE_REMOVED, 0)
     assert final_registered == initial_registered_count
     assert final_removed == initial_removed_count
+
+
+async def test_instructions_factory_wired_up(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test that SessionManager gets an instructions_factory from setup."""
+    with patch(
+        "hamster.component.async_get_all_descriptions",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    data = hass.data[DOMAIN][mock_config_entry.entry_id]
+    manager = data["manager"]
+    assert manager._instructions_factory is not None
+
+
+async def test_instructions_factory_includes_base_url(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test that instructions factory produces text with the HA base URL."""
+    with (
+        patch(
+            "hamster.component.async_get_all_descriptions",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "hamster.component.get_url",
+            return_value="http://ha.local:8123",
+        ),
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    data = hass.data[DOMAIN][mock_config_entry.entry_id]
+    manager = data["manager"]
+    factory = manager._instructions_factory
+
+    # Mock get_url for factory calls (factory captures hass, calls get_url)
+    with patch(
+        "hamster.component.get_url",
+        return_value="http://ha.local:8123",
+    ):
+        # Call with user info
+        result = factory("uid-1", "Kyle")
+        assert result is not None
+        assert "Kyle" in result
+        assert "Home Assistant instance URL: http://ha.local:8123" in result
+
+        # Call without user info
+        result_anon = factory(None, None)
+        assert result_anon is not None
+        assert "Kyle" not in result_anon
+        assert "Home Assistant instance URL: http://ha.local:8123" in result_anon
+
+
+async def test_instructions_factory_returns_none_when_no_url(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test that instructions factory returns None when no URL is available."""
+    from homeassistant.helpers.network import NoURLAvailableError
+
+    with patch(
+        "hamster.component.async_get_all_descriptions",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    data = hass.data[DOMAIN][mock_config_entry.entry_id]
+    manager = data["manager"]
+    factory = manager._instructions_factory
+
+    with patch(
+        "hamster.component.get_url",
+        side_effect=NoURLAvailableError,
+    ):
+        result = factory("uid-1", "Kyle")
+        assert result is None
