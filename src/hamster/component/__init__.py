@@ -14,6 +14,7 @@ import os
 import time
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 from homeassistant.const import EVENT_SERVICE_REGISTERED, EVENT_SERVICE_REMOVED
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
@@ -244,7 +245,7 @@ async def _refresh_websocket_docs(
     # 1. Fetch raw markdown
     session = async_get_clientsession(hass)
     url = url_template.format(ref=git_ref)
-    async with session.get(url) as resp:
+    async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
         resp.raise_for_status()
         markdown = await resp.text()
 
