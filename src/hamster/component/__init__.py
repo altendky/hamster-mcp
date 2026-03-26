@@ -33,9 +33,9 @@ from hamster.mcp._io.resources import load_all_resources
 from .const import (
     DEFAULT_AUTO_FETCH_DOCS,
     DEFAULT_DOCS_GIT_REF,
+    DEFAULT_DOCS_URL_TEMPLATE,
     DEFAULT_ENABLE_SERVICES_GROUP,
     DEFAULT_IDLE_TIMEOUT,
-    DOCS_RAW_URL_TEMPLATE,
     DOMAIN,
     PLATFORMS,
 )
@@ -223,15 +223,17 @@ async def _refresh_websocket_docs(
     manager: SessionManager,
     store: Store[dict[str, Any]],
     *,
+    url_template: str,
     git_ref: str,
 ) -> dict[str, int]:
-    """Fetch WebSocket docs from GitHub, parse, enrich, and update registry.
+    """Fetch WebSocket docs, parse, enrich, and update registry.
 
     Args:
         hass: Home Assistant instance
         manager: Session manager holding the group registry
         store: Persistent store for caching parsed descriptions
-        git_ref: Git ref (branch, tag, commit) to fetch from
+        url_template: URL template with optional ``{ref}`` placeholder
+        git_ref: Git ref (branch, tag, commit) substituted into the template
 
     Returns:
         Dict with ``commands_enriched`` and ``commands_total`` counts
@@ -239,9 +241,9 @@ async def _refresh_websocket_docs(
     Raises:
         Exception: If the fetch or any step fails
     """
-    # 1. Fetch raw markdown from GitHub
+    # 1. Fetch raw markdown
     session = async_get_clientsession(hass)
-    url = DOCS_RAW_URL_TEMPLATE.format(ref=git_ref)
+    url = url_template.format(ref=git_ref)
     async with session.get(url) as resp:
         resp.raise_for_status()
         markdown = await resp.text()
@@ -267,6 +269,7 @@ async def _refresh_websocket_docs(
     await store.async_save(
         {
             "descriptions": descriptions,
+            "url_template": url_template,
             "git_ref": git_ref,
         }
     )
@@ -317,6 +320,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "enable_services_group", DEFAULT_ENABLE_SERVICES_GROUP
     )
     auto_fetch_docs = entry.options.get("auto_fetch_docs", DEFAULT_AUTO_FETCH_DOCS)
+    docs_url_template = entry.options.get(
+        "docs_url_template", DEFAULT_DOCS_URL_TEMPLATE
+    )
     docs_git_ref = entry.options.get("docs_git_ref", DEFAULT_DOCS_GIT_REF)
 
     # Create components
@@ -378,7 +384,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         *,
         git_ref: str = docs_git_ref,
     ) -> dict[str, int]:
-        return await _refresh_websocket_docs(hass, manager, docs_store, git_ref=git_ref)
+        return await _refresh_websocket_docs(
+            hass,
+            manager,
+            docs_store,
+            url_template=docs_url_template,
+            git_ref=git_ref,
+        )
 
     # Register the hamster.refresh_docs service
     async def _handle_refresh_docs(call: Any) -> None:

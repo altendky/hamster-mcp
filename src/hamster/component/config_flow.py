@@ -17,7 +17,12 @@ from homeassistant.config_entries import (
 )
 import voluptuous as vol
 
-from .const import DEFAULT_AUTO_FETCH_DOCS, DEFAULT_DOCS_GIT_REF, DOMAIN
+from .const import (
+    DEFAULT_AUTO_FETCH_DOCS,
+    DEFAULT_DOCS_GIT_REF,
+    DEFAULT_DOCS_URL_TEMPLATE,
+    DOMAIN,
+)
 
 
 class HamsterConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -63,6 +68,12 @@ class HamsterOptionsFlow(OptionsFlowWithConfigEntry):
                         "auto_fetch_docs",
                         default=current.get("auto_fetch_docs", DEFAULT_AUTO_FETCH_DOCS),
                     ): bool,
+                    vol.Optional(
+                        "docs_url_template",
+                        default=current.get(
+                            "docs_url_template", DEFAULT_DOCS_URL_TEMPLATE
+                        ),
+                    ): str,
                     vol.Optional(
                         "docs_git_ref",
                         default=current.get("docs_git_ref", DEFAULT_DOCS_GIT_REF),
