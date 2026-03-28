@@ -758,7 +758,7 @@ def create_clipped_layer(
     return output_group
 
 
-def _cubic_roots_in_01(a: float, b: float, c: float) -> list[float]:
+def _quadratic_roots_in_01(a: float, b: float, c: float) -> list[float]:
     """Find real roots of at² + bt + c = 0 that lie in the open interval (0, 1)."""
     roots: list[float] = []
     if abs(a) < 1e-12:
@@ -808,7 +808,7 @@ def _bezier_axis_extrema_t(
     a = -p0 + 3 * p1 - 3 * p2 + p3
     b = 2 * (p0 - 2 * p1 + p2)
     c = p1 - p0  # note: the factor 3 cancels in the root-finding
-    return _cubic_roots_in_01(a, b, c)
+    return _quadratic_roots_in_01(a, b, c)
 
 
 def _stroked_path_visual_bbox(
