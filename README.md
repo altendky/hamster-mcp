@@ -1,5 +1,10 @@
 # Hamster
 
+![Hamster icon](custom_components/hamster/brand/icon.png)
+
+[![CI](https://github.com/altendky/hamster/actions/workflows/ci.yml/badge.svg)](https://github.com/altendky/hamster/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/altendky/hamster)](LICENSE-MIT)
+
 Home Assistant MCP Server --- exposes HA's full capabilities via the
 [Model Context Protocol](https://modelcontextprotocol.io/).
 
@@ -12,7 +17,7 @@ all available services and their schemas automatically.
 
 ## Status
 
-**In development.** Substantially complete --- ready for testing and feedback.
+**Beta.** Functional and ready for testing and feedback.
 
 ## Key Features
 
@@ -24,6 +29,11 @@ all available services and their schemas automatically.
 - **Sans-IO protocol core** --- fully testable without mocking
 - **Full admin access** --- services, states, registries, automations,
   dashboards, supervisor (when available)
+
+## Requirements
+
+- Home Assistant 2025.2 or later
+- Python 3.13 or later
 
 ## Installation
 
@@ -44,6 +54,33 @@ all available services and their schemas automatically.
    `config/custom_components/` directory.
 2. Restart Home Assistant.
 3. Add the integration via Settings → Devices & Services → Add Integration → Hamster MCP.
+
+## Usage
+
+After installation, the MCP server is available at:
+
+```text
+POST https://<your-ha-host>/api/hamster
+```
+
+This uses the [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http)
+MCP transport. Authentication is handled by Home Assistant --- create a
+**Long-Lived Access Token** in your HA user profile (under Security) and pass
+it as a Bearer token:
+
+```text
+Authorization: Bearer <your-token>
+```
+
+### Configuration
+
+The integration requires no configuration to get started --- just confirm the
+setup when adding it. Optional settings are available under the integration's
+**Configure** button:
+
+- **Auto-fetch docs on startup** --- automatically fetch WebSocket API
+  documentation for richer tool descriptions (default: on)
+- **Docs URL / Git ref** --- customize the source for WebSocket API docs
 
 ## Documentation
 
