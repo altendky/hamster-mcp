@@ -907,16 +907,15 @@ def _stroked_path_visual_bbox(
 
         elif cmd == "Z":
             is_closed = True
+            # Remove the speculatively-added subpath start from endpoints
+            if subpath_start is not None and subpath_start in endpoints:
+                endpoints.remove(subpath_start)
             if subpath_start is not None:
                 current = subpath_start
 
     # Final subpath endpoint
     if current is not None and not is_closed:
         endpoints.append(current)
-
-    # If the path was closed, remove the subpath-start we speculatively added
-    if is_closed and subpath_start is not None and subpath_start in endpoints:
-        endpoints.remove(subpath_start)
 
     # Round linecaps: add semicircle extent at open endpoints
     if round_caps:
