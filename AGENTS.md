@@ -45,16 +45,15 @@ Brand icons are generated from `brand/source.svg`:
 mise run generate-icons
 ```
 
-**Requires:** Inkscape CLI (`inkscape` in PATH)
+**Requires:** Inkscape CLI 1.4.3 (`inkscape` in PATH)
 
 The source SVG should contain black stroke-based line art with uniform stroke
 width. The script applies amber (`#c87f43`) fill and halo (3x stroke width),
 auto-fits to the canvas, then exports PNG icons at 256x256 and 512x512.
 
-Generated files:
+Generated files (written to `custom_components/hamster/brand/`):
 
-- `brand/icon.svg`, `brand/icon.png`, `brand/icon@2x.png`
-- Copies in `custom_components/hamster/brand/`
+- `icon.svg`, `icon.png`, `icon@2x.png`
 
 ## Package Structure
 

@@ -89,7 +89,7 @@ LAYER_CONFIG = {
 # Paths
 BRAND_DIR = Path(__file__).parent
 SOURCE_SVG = BRAND_DIR / "source.svg"
-HACS_BRAND_DIR = BRAND_DIR.parent / "custom_components" / "hamster" / "brand"
+OUTPUT_DIR = BRAND_DIR.parent / "custom_components" / "hamster" / "brand"
 
 # SVG namespaces
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -992,27 +992,20 @@ def main() -> None:
     print("  Composing icon SVG...")  # noqa: T201
     icon_svg = compose_icon_svg(source_root, layers, fills, stroke_width)
 
+    # Write outputs to HACS brand directory
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     # Write icon.svg
-    icon_svg_path = BRAND_DIR / "icon.svg"
+    icon_svg_path = OUTPUT_DIR / "icon.svg"
     icon_svg_path.write_text(icon_svg)
     print(f"  Wrote: {icon_svg_path}")  # noqa: T201
 
     # Export PNGs
     for size in ICON_SIZES:
         png_name = "icon.png" if size == 256 else f"icon@{size // 256}x.png"
-        png_path = BRAND_DIR / png_name
+        png_path = OUTPUT_DIR / png_name
         export_png(icon_svg_path, png_path, size)
         print(f"  Wrote: {png_path}")  # noqa: T201
-
-    # Copy to HACS brand directory
-    print(f"  Copying to {HACS_BRAND_DIR}...")  # noqa: T201
-    HACS_BRAND_DIR.mkdir(parents=True, exist_ok=True)
-    for size in ICON_SIZES:
-        png_name = "icon.png" if size == 256 else f"icon@{size // 256}x.png"
-        src = BRAND_DIR / png_name
-        dst = HACS_BRAND_DIR / png_name
-        shutil.copy2(src, dst)
-        print(f"    Copied: {dst}")  # noqa: T201
 
     print("Done!")  # noqa: T201
 
