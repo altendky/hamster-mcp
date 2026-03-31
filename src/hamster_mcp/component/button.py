@@ -11,12 +11,14 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.button import ButtonEntity
 
-from .const import DEFAULT_DOCS_GIT_REF, DOMAIN
+from .const import DEFAULT_DOCS_GIT_REF
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from ._runtime import EntryRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,20 +50,12 @@ class HamsterRefreshDocsButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle button press --- refresh WebSocket docs."""
-        data = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id)
-        if data is None:
-            _LOGGER.warning("Hamster integration data not found")
-            return
-
-        refresh_fn = data.get("refresh_docs")
-        if refresh_fn is None:
-            _LOGGER.warning("Docs refresh function not available")
-            return
+        runtime: EntryRuntime = self._entry.runtime_data
 
         git_ref = self._entry.options.get("docs_git_ref", DEFAULT_DOCS_GIT_REF)
 
         try:
-            result = await refresh_fn(git_ref=git_ref)
+            result = await runtime.refresh_docs(git_ref=git_ref)
             _LOGGER.info(
                 "WebSocket docs refreshed: %d/%d commands enriched",
                 result["commands_enriched"],

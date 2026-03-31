@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hamster_mcp.component.const import DOMAIN
 from hamster_mcp.mcp._core.groups import ServicesGroup
 
 if TYPE_CHECKING:
@@ -64,8 +63,8 @@ class TestGroupRegistryStartup:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         all_groups = manager._registry.all_groups()
         assert len(all_groups) == 3
@@ -95,8 +94,8 @@ class TestGroupRegistryUpdateServices:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Initial state
         result = manager._registry.search_all("light")
@@ -146,8 +145,8 @@ class TestGroupRegistrySearchAll:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Search for "light" should find results in multiple groups
         result = manager._registry.search_all("light")
@@ -179,8 +178,8 @@ class TestGroupRegistrySearchAll:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Filter to services only
         result = manager._registry.search_all("turn", path_filter="services")
@@ -202,8 +201,8 @@ class TestGroupRegistrySearchAll:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.search_all("nonexistent_query_xyz")
         assert "No commands found" in result
@@ -226,8 +225,8 @@ class TestGroupRegistryResolvePath:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Services path
         result = manager._registry.resolve_path("services/light.turn_on")
@@ -257,8 +256,8 @@ class TestGroupRegistryResolvePath:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("")
         assert result is None
@@ -277,8 +276,8 @@ class TestGroupRegistryResolvePath:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("nogroup")
         assert result is None
@@ -297,8 +296,8 @@ class TestGroupRegistryResolvePath:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("services/")
         assert result is not None
