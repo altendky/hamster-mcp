@@ -106,25 +106,25 @@ Diagnostic and config entities are typically not targets for service calls.
 
 ## Common Domains
 
-| Domain            | Description                 | Typical services                    |
-|------------------ |---------------------------- |------------------------------------ |
-| `light`           | Lights                      | `turn_on`, `turn_off`, `toggle`     |
-| `switch`          | Switches                    | `turn_on`, `turn_off`, `toggle`     |
-| `sensor`          | Sensors (read-only)         | (none --- sensors have no services) |
-| `binary_sensor`   | On/off sensors (read-only)  | (none)                              |
-| `climate`         | Thermostats, HVAC           | `set_temperature`, `set_hvac_mode`  |
-| `cover`           | Blinds, garage doors        | `open_cover`, `close_cover`         |
-| `media_player`    | Media devices               | `play_media`, `volume_set`          |
-| `fan`             | Fans                        | `turn_on`, `set_percentage`         |
-| `lock`            | Locks                       | `lock`, `unlock`                    |
-| `automation`      | Automations                 | `trigger`, `turn_on`, `turn_off`    |
-| `script`          | Scripts                     | `turn_on` (or call by entity ID)    |
-| `scene`           | Scenes                      | `turn_on`                           |
-| `input_boolean`   | Virtual toggles             | `turn_on`, `turn_off`, `toggle`     |
-| `input_number`    | Virtual number inputs       | `set_value`                         |
-| `input_select`    | Virtual dropdowns           | `select_option`                     |
-| `input_text`      | Virtual text inputs         | `set_value`                         |
-| `input_datetime`  | Virtual date/time inputs    | `set_datetime`                      |
+| Domain | Description | Typical services |
+| --- | --- | --- |
+| `light` | Lights | `turn_on`, `turn_off`, `toggle` |
+| `switch` | Switches | `turn_on`, `turn_off`, `toggle` |
+| `sensor` | Sensors (read-only) | (none --- sensors have no services) |
+| `binary_sensor` | On/off sensors (read-only) | (none) |
+| `climate` | Thermostats, HVAC | `set_temperature`, `set_hvac_mode` |
+| `cover` | Blinds, garage doors | `open_cover`, `close_cover` |
+| `media_player` | Media devices | `play_media`, `volume_set` |
+| `fan` | Fans | `turn_on`, `set_percentage` |
+| `lock` | Locks | `lock`, `unlock` |
+| `automation` | Automations | `trigger`, `turn_on`, `turn_off` |
+| `script` | Scripts | `turn_on` (or call by entity ID) |
+| `scene` | Scenes | `turn_on` |
+| `input_boolean` | Virtual toggles | `turn_on`, `turn_off`, `toggle` |
+| `input_number` | Virtual number inputs | `set_value` |
+| `input_select` | Virtual dropdowns | `select_option` |
+| `input_text` | Virtual text inputs | `set_value` |
+| `input_datetime` | Virtual date/time inputs | `set_datetime` |
 
 ## Resolving Friendly Names
 
