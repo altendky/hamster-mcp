@@ -99,11 +99,11 @@ in a single bulk response rather than individual searchable entries.
 
 ## Metadata Comparison
 
-| Capability                  | `services/` group         | `hass/call_service`       |
-| --------------------------- | ------------------------- | ------------------------- |
-| Per-service `explain`       | Yes                       | No (single generic entry) |
-| Per-service `schema`        | Yes (with selectors)      | No                        |
-| Searchable by keyword       | Yes                       | No                        |
-| Target specifications       | Yes (domain, integration) | No                        |
-| Field descriptions          | Yes                       | Via `hass/get_services`   |
-| Can call any service        | Yes (indexed services)    | Yes                       |
+| Capability | `services/` group | `hass/call_service` |
+| --- | --- | --- |
+| Per-service `explain` | Yes | No (single generic entry) |
+| Per-service `schema` | Yes (with selectors) | No |
+| Searchable by keyword | Yes | No |
+| Target specifications | Yes (domain, integration) | No |
+| Field descriptions | Yes | Via `hass/get_services` |
+| Can call any service | Yes (indexed services) | Yes |

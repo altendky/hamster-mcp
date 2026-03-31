@@ -29,13 +29,13 @@ invocation.  All fields are optional; combine them to narrow or broaden scope.
 
 ### Fields
 
-| Field       | Type                 | Description                                     |
-| ----------- | -------------------- | ----------------------------------------------- |
-| `entity_id` | `string \| [string]` | One or more entity IDs                          |
-| `device_id` | `string \| [string]` | One or more device IDs (opaque hex strings)     |
-| `area_id`   | `string \| [string]` | One or more area slugs (e.g. `"living_room"`)   |
-| `floor_id`  | `string \| [string]` | One or more floor slugs (e.g. `"ground_floor"`) |
-| `label_id`  | `string \| [string]` | One or more label slugs                         |
+| Field | Type | Description |
+| --- | --- | --- |
+| `entity_id` | `string \| [string]` | One or more entity IDs |
+| `device_id` | `string \| [string]` | One or more device IDs (opaque hex strings) |
+| `area_id` | `string \| [string]` | One or more area slugs (e.g. `"living_room"`) |
+| `floor_id` | `string \| [string]` | One or more floor slugs (e.g. `"ground_floor"`) |
+| `label_id` | `string \| [string]` | One or more label slugs |
 
 Each field accepts either a single string or an array of strings.
 
