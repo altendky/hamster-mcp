@@ -33,7 +33,13 @@ async def async_setup_entry(
 
 
 class HamsterRefreshDocsButton(ButtonEntity):
-    """Button to refresh WebSocket command documentation from GitHub."""
+    """Button to refresh WebSocket command documentation from GitHub.
+
+    Not a dataclass: Inherits from ButtonEntity, a Home Assistant framework base
+    class that defines the button entity contract. Framework subclasses must follow
+    their parent class's initialization and lifecycle patterns. TODO: Investigate
+    whether dataclass inheritance with Home Assistant entity base classes is viable.
+    """
 
     _attr_has_entity_name = True
     _attr_translation_key = "refresh_websocket_docs"

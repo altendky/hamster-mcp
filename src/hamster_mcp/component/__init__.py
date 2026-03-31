@@ -111,16 +111,16 @@ async def _build_registry(
     # Services group
     if enable_services_group:
         descriptions = await async_get_all_descriptions(hass)
-        registry.register(ServicesGroup(descriptions))
+        registry.register(ServicesGroup.create(descriptions))
 
     # Hass group (WebSocket commands)
     ws_registry = hass.data.get("websocket_api", {})
     commands = discover_commands(ws_registry)
-    registry.register(HassGroup(commands))
+    registry.register(HassGroup.create(commands))
 
     # Supervisor group (availability-dependent)
     supervisor_available = is_supervisor_available(hass)
-    registry.register(SupervisorGroup(available=supervisor_available))
+    registry.register(SupervisorGroup.create(available=supervisor_available))
 
     return registry
 
@@ -193,23 +193,23 @@ async def _build_partial_registry(
     if enable_services_group:
         try:
             descriptions = await async_get_all_descriptions(hass)
-            registry.register(ServicesGroup(descriptions))
+            registry.register(ServicesGroup.create(descriptions))
         except Exception:
             _LOGGER.warning("Failed to build services group, starting empty")
-            registry.register(ServicesGroup({}))
+            registry.register(ServicesGroup.create({}))
 
     # Try hass group
     try:
         ws_registry = hass.data.get("websocket_api", {})
         commands = discover_commands(ws_registry)
-        registry.register(HassGroup(commands))
+        registry.register(HassGroup.create(commands))
     except Exception:
         _LOGGER.warning("Failed to build hass group, starting empty")
-        registry.register(HassGroup({}))
+        registry.register(HassGroup.create({}))
 
     # Supervisor group (can't fail - just availability check)
     supervisor_available = is_supervisor_available(hass)
-    registry.register(SupervisorGroup(available=supervisor_available))
+    registry.register(SupervisorGroup.create(available=supervisor_available))
 
     return registry
 
@@ -259,7 +259,7 @@ async def _refresh_websocket_docs(
     enriched = enrich_commands(current_commands, descriptions)
 
     # 5. Update registry
-    manager.update_hass_group(HassGroup(enriched))
+    manager.update_hass_group(HassGroup.create(enriched))
 
     # 6. Persist parsed descriptions for next startup
     await store.async_save(
@@ -298,7 +298,7 @@ def _apply_cached_descriptions(
 
     current_commands = hass_group.commands
     enriched = enrich_commands(current_commands, cached_descriptions)
-    manager.update_hass_group(HassGroup(enriched))
+    manager.update_hass_group(HassGroup.create(enriched))
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -448,6 +448,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "refresh_docs")
 
     runtime: EntryRuntime = entry.runtime_data
+    assert runtime.transport is not None, "transport not set"
+    assert runtime.wakeup_task is not None, "wakeup_task not set"
 
     # Shutdown transport (new requests return 503)
     runtime.transport.shutdown()

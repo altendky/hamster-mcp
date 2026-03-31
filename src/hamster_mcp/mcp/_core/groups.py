@@ -6,6 +6,7 @@ command sources (services, hass, supervisor).
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .events import Done, FormatServiceResponse, ServiceCall, ToolEffect
@@ -21,6 +22,11 @@ class SourceGroup(Protocol):
 
     Each group exposes commands from a different source (services, hass,
     supervisor) with group-specific discovery and metadata.
+
+    Not a dataclass: This is a Protocol — a structural typing construct that
+    defines the contract source groups must implement. Protocols specify method
+    signatures and properties for static type checking; they are not instantiated
+    directly and serve purely as interface definitions.
     """
 
     @property
@@ -65,6 +71,7 @@ class SourceGroup(Protocol):
         ...
 
 
+@dataclass(frozen=False, slots=True)
 class GroupRegistry:
     """Registry for source groups.
 
@@ -72,9 +79,7 @@ class GroupRegistry:
     operations across all groups.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty registry."""
-        self._groups: dict[str, SourceGroup] = {}
+    _groups: dict[str, SourceGroup] = field(default_factory=dict)
 
     def register(self, group: SourceGroup) -> None:
         """Register a group.
@@ -185,22 +190,31 @@ def _make_error(message: str) -> Done:
 # --- ServicesGroup ---
 
 
+@dataclass(frozen=True, slots=True)
 class ServicesGroup:
     """Source group for Home Assistant services.
 
     Wraps the service descriptions from async_get_all_descriptions() and
     provides search, explain, schema, and call functionality.
+
+    Use `.create()` classmethod to construct from raw HA service descriptions.
     """
 
-    def __init__(self, descriptions: Mapping[str, Any]) -> None:
+    _descriptions: Mapping[str, Any]
+    _entries: tuple[tuple[str, str, str, dict[str, object]], ...]
+
+    @classmethod
+    def create(cls, descriptions: Mapping[str, Any]) -> ServicesGroup:
         """Build index from HA service descriptions.
 
         Args:
             descriptions: Dict keyed by domain, then service name.
                 Each service value contains 'name', 'description', 'fields', etc.
+
+        Returns:
+            ServicesGroup with pre-computed search index.
         """
-        self._descriptions = descriptions
-        self._entries: list[tuple[str, str, str, dict[str, object]]] = []
+        entries: list[tuple[str, str, str, dict[str, object]]] = []
 
         for domain, services in descriptions.items():
             if not isinstance(services, dict):
@@ -217,7 +231,9 @@ class ServicesGroup:
                 if isinstance(fields, dict):
                     search_parts.extend(fields.keys())
                 search_text = " ".join(search_parts).lower()
-                self._entries.append((domain, service_name, search_text, service_data))
+                entries.append((domain, service_name, search_text, service_data))
+
+        return cls(_descriptions=descriptions, _entries=tuple(entries))
 
     @property
     def name(self) -> str:

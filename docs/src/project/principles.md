@@ -143,6 +143,57 @@ and returns an indexed, searchable structure out.
 The component layer handles calling `async_get_all_descriptions()` and
 feeding the results to the `SessionManager` via `update_index()`.
 
+## Dataclass Convention
+
+All classes use `@dataclass`. No exceptions for "behavioral" vs "data" classes.
+
+### Standard Form
+
+```python
+@dataclass(frozen=True, slots=True)   # Immutable (preferred)
+@dataclass(frozen=False, slots=True)  # Mutable (when needed)
+```
+
+Use explicit `frozen=False` rather than omitting it — this signals intentional
+mutability.
+
+### Complex Construction
+
+When `__init__` would require computation, use a `.create()` classmethod:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ServicesGroup:
+    _descriptions: Mapping[str, Any]
+    _entries: tuple[tuple[str, str, str, dict[str, object]], ...]
+
+    @classmethod
+    def create(cls, descriptions: Mapping[str, Any]) -> ServicesGroup:
+        entries = []
+        for domain, services in descriptions.items():
+            # ... build index ...
+        return cls(_descriptions=descriptions, _entries=tuple(entries))
+```
+
+This keeps `__init__` pure (just field assignment) while allowing complex
+construction logic.
+
+### Exceptions
+
+Some classes cannot be dataclasses:
+
+1. **Framework subclasses** — Must inherit from Home Assistant base classes
+   (`ButtonEntity`, `ConfigFlow`, `HomeAssistantView`, etc.). Document with
+   a TODO to investigate whether dataclass inheritance is viable.
+
+2. **Protocols** — Define interfaces via `typing.Protocol`. These are type
+   specifications, not implementations.
+
+3. **Enums** — Use `enum.Enum`, a different construct.
+
+Non-dataclass classes must include a paragraph in their docstring explaining
+why they are exceptions.
+
 ## Tristate Tool Control (Deferred)
 
 Per-service filtering is deferred.  With 4 fixed meta-tools, there is no

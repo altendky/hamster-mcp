@@ -133,26 +133,36 @@ def _make_error(message: str) -> Done:
 # --- SupervisorGroup ---
 
 
+@dataclass(frozen=True, slots=True)
 class SupervisorGroup:
     """Source group for Supervisor API endpoints.
 
     Provides search, explain, schema, and call functionality for
     Supervisor API endpoints. Uses static endpoint definitions.
+
+    Use `.create()` classmethod to construct with pre-computed search index.
     """
 
-    def __init__(self, available: bool) -> None:
-        """Initialize with availability status.
+    _available: bool
+    _entries: tuple[tuple[str, str, EndpointInfo], ...]
+
+    @classmethod
+    def create(cls, available: bool) -> SupervisorGroup:
+        """Build with availability status.
 
         Args:
             available: Whether Supervisor is available on this installation
+
+        Returns:
+            SupervisorGroup with pre-computed search index.
         """
-        self._available = available
-        # Build search index
-        self._entries: list[tuple[str, str, EndpointInfo]] = []
+        entries: list[tuple[str, str, EndpointInfo]] = []
         for endpoint_path, info in SUPERVISOR_ENDPOINTS.items():
             # Build search text from endpoint path and description
             search_text = f"{endpoint_path} {info.description}".lower()
-            self._entries.append((endpoint_path, search_text, info))
+            entries.append((endpoint_path, search_text, info))
+
+        return cls(_available=available, _entries=tuple(entries))
 
     @property
     def name(self) -> str:

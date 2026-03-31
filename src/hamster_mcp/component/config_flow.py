@@ -26,7 +26,14 @@ from .const import (
 
 
 class HamsterConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Hamster MCP."""
+    """Handle a config flow for Hamster MCP.
+
+    Not a dataclass: Inherits from ConfigFlow, a Home Assistant framework base
+    class that defines the configuration flow contract. Framework subclasses must
+    follow their parent class's initialization and lifecycle patterns. TODO:
+    Investigate whether dataclass inheritance with Home Assistant flow base classes
+    is viable.
+    """
 
     VERSION = 1
 
@@ -49,7 +56,14 @@ class HamsterConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HamsterOptionsFlow(OptionsFlowWithConfigEntry):
-    """Handle options for Hamster MCP."""
+    """Handle options for Hamster MCP.
+
+    Not a dataclass: Inherits from OptionsFlowWithConfigEntry, a Home Assistant
+    framework base class that defines the options flow contract. Framework
+    subclasses must follow their parent class's initialization and lifecycle
+    patterns. TODO: Investigate whether dataclass inheritance with Home Assistant
+    flow base classes is viable.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

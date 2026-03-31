@@ -264,22 +264,30 @@ def _is_filtered_command(command_type: str) -> bool:
 # --- HassGroup ---
 
 
+@dataclass(frozen=True, slots=True)
 class HassGroup:
     """Source group for Home Assistant WebSocket commands.
 
     Discovers commands from hass.data["websocket_api"] and provides
     search, explain, schema, and call functionality.
+
+    Use `.create()` classmethod to construct with pre-computed search index.
     """
 
-    def __init__(self, commands: dict[str, CommandInfo]) -> None:
-        """Initialize with discovered commands.
+    _commands: dict[str, CommandInfo]
+    _entries: tuple[tuple[str, str, CommandInfo], ...]
+
+    @classmethod
+    def create(cls, commands: dict[str, CommandInfo]) -> HassGroup:
+        """Build from discovered commands.
 
         Args:
             commands: Dict mapping command_type to CommandInfo
+
+        Returns:
+            HassGroup with pre-computed search index.
         """
-        self._commands = commands
-        # Build search index
-        self._entries: list[tuple[str, str, CommandInfo]] = []
+        entries: list[tuple[str, str, CommandInfo]] = []
         for command_type, info in commands.items():
             # Build search text from command type, description, and field names
             search_parts = [command_type]
@@ -291,7 +299,9 @@ class HassGroup:
                 if isinstance(fields, dict):
                     search_parts.extend(fields.keys())
             search_text = " ".join(search_parts).lower()
-            self._entries.append((command_type, search_text, info))
+            entries.append((command_type, search_text, info))
+
+        return cls(_commands=commands, _entries=tuple(entries))
 
     @property
     def commands(self) -> dict[str, CommandInfo]:

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import contextlib
+from dataclasses import dataclass, field
 import logging
 import time
 from typing import TYPE_CHECKING, Protocol
@@ -48,6 +49,11 @@ class EffectHandler(Protocol):
     """Protocol for executing effects.
 
     Defined here, implemented by hamster_mcp.component.http.
+
+    Not a dataclass: This is a Protocol — a structural typing construct that
+    defines the contract effect handlers must implement. Protocols specify method
+    signatures for static type checking; they are not instantiated directly and
+    serve purely as interface definitions.
     """
 
     async def execute_service_call(
@@ -115,31 +121,19 @@ class EffectHandler(Protocol):
 IndexRebuildCallback = Callable[[], Awaitable[None]]
 
 
+@dataclass(frozen=False, slots=True)
 class AiohttpMCPTransport:
     """aiohttp transport for MCP protocol.
 
     Bridges aiohttp requests to the sans-IO SessionManager.
     """
 
-    def __init__(
-        self,
-        manager: SessionManager,
-        effect_handler: EffectHandler,
-        index_rebuild_callback: IndexRebuildCallback | None = None,
-    ) -> None:
-        """Initialize the transport.
-
-        Args:
-            manager: The sans-IO session manager
-            effect_handler: Handler for executing service call effects
-            index_rebuild_callback: Optional callback for rebuilding service index
-        """
-        self._manager = manager
-        self._effect_handler = effect_handler
-        self._index_rebuild_callback = index_rebuild_callback
-        self._loaded = True
-        self._wakeup_task: asyncio.Task[None] | None = None
-        self._wakeup_event = asyncio.Event()
+    manager: SessionManager
+    effect_handler: EffectHandler
+    index_rebuild_callback: IndexRebuildCallback | None = None
+    _loaded: bool = True
+    _wakeup_task: asyncio.Task[None] | None = None
+    _wakeup_event: asyncio.Event = field(default_factory=asyncio.Event)
 
     async def handle(self, request: web.Request) -> web.Response:
         """Handle an HTTP request.
@@ -175,14 +169,14 @@ class AiohttpMCPTransport:
             user_name=user_name,
         )
 
-        result = self._manager.receive_request(incoming, now=time.monotonic())
+        result = self.manager.receive_request(incoming, now=time.monotonic())
 
         # Handle single result
         if isinstance(result, SendResponse):
             return self._make_response(result)
         if isinstance(result, RunEffects):
             call_result = await self._run_effects(result.effect)
-            resp = self._manager.build_effect_response(result.request_id, call_result)
+            resp = self.manager.build_effect_response(result.request_id, call_result)
             return self._make_response(resp)
 
         # Handle batch result (list)
@@ -206,7 +200,7 @@ class AiohttpMCPTransport:
                 # SendResponse with body=None (notifications) omitted
             elif isinstance(item, RunEffects):
                 call_result = await self._run_effects(item.effect)
-                resp = self._manager.build_effect_response(item.request_id, call_result)
+                resp = self.manager.build_effect_response(item.request_id, call_result)
                 if resp.body is not None:
                     bodies.append(resp.body)
 
@@ -241,7 +235,7 @@ class AiohttpMCPTransport:
                 return current.result
             if isinstance(current, ServiceCall):
                 try:
-                    io_result = await self._effect_handler.execute_service_call(
+                    io_result = await self.effect_handler.execute_service_call(
                         current.domain,
                         current.service,
                         current.target,
@@ -261,7 +255,7 @@ class AiohttpMCPTransport:
                 current = resume(current.continuation, io_result)
             elif isinstance(current, HassCommand):
                 try:
-                    hass_result = await self._effect_handler.execute_hass_command(
+                    hass_result = await self.effect_handler.execute_hass_command(
                         current.command_type,
                         current.params,
                         current.user_id,
@@ -279,7 +273,7 @@ class AiohttpMCPTransport:
             elif isinstance(current, SupervisorCall):
                 try:
                     supervisor_result = (
-                        await self._effect_handler.execute_supervisor_call(
+                        await self.effect_handler.execute_supervisor_call(
                             current.method,
                             current.path,
                             current.params,
@@ -324,7 +318,7 @@ class AiohttpMCPTransport:
         while self._loaded:
             try:
                 now = time.monotonic()
-                expired_list, should_regenerate, wakeup = self._manager.check_wakeups(
+                expired_list, should_regenerate, wakeup = self.manager.check_wakeups(
                     now
                 )
 
@@ -333,9 +327,9 @@ class AiohttpMCPTransport:
                     _LOGGER.debug("Session expired: %s", expired.session_id)
 
                 # Handle index rebuild
-                if should_regenerate and self._index_rebuild_callback is not None:
+                if should_regenerate and self.index_rebuild_callback is not None:
                     try:
-                        await self._index_rebuild_callback()
+                        await self.index_rebuild_callback()
                     except Exception:
                         _LOGGER.exception("Error rebuilding service index")
 

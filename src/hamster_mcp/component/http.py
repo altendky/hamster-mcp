@@ -7,6 +7,7 @@ the effect handler that executes service calls and WebSocket commands.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=False, slots=True)
 class InternalConnection:
     """Internal adapter for invoking WS handlers without a real WebSocket.
 
@@ -45,23 +47,16 @@ class InternalConnection:
     filtered out by HassGroup and not supported here.
     """
 
-    def __init__(self, hass: HomeAssistant, user: User | None) -> None:
-        """Initialize the internal connection.
-
-        Args:
-            hass: Home Assistant instance
-            user: Authenticated user, or None for unauthenticated
-        """
-        self.hass = hass
-        self.user = user
-        # Required by ActiveConnection interface
-        self.subscriptions: dict[Hashable, Callable[[], Any]] = {}
-        self.supported_features: dict[str, float] = {}
-        self.logger = logging.getLogger(__name__)
-        # Result capture
-        self._result_event = asyncio.Event()
-        self.result: object = None
-        self.error: tuple[str, str] | None = None  # (code, message)
+    hass: HomeAssistant
+    user: User | None
+    # Required by ActiveConnection interface
+    subscriptions: dict[Hashable, Callable[[], Any]] = field(default_factory=dict)
+    supported_features: dict[str, float] = field(default_factory=dict)
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger(__name__))
+    # Result capture
+    _result_event: asyncio.Event = field(default_factory=asyncio.Event)
+    result: object = None
+    error: tuple[str, str] | None = None  # (code, message)
 
     def context(self, msg: dict[str, object]) -> Context:
         """Create a context for command execution.
@@ -220,16 +215,11 @@ class InternalConnection:
         await asyncio.wait_for(self._result_event.wait(), timeout)
 
 
+@dataclass(frozen=False, slots=True)
 class HamsterEffectHandler:
     """Effect handler that executes Home Assistant service calls and commands."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        """Initialize the effect handler.
-
-        Args:
-            hass: Home Assistant instance
-        """
-        self._hass = hass
+    _hass: HomeAssistant
 
     async def execute_service_call(
         self,
@@ -425,7 +415,14 @@ class HamsterEffectHandler:
 
 
 class HamsterMCPView(HomeAssistantView):
-    """Home Assistant view for MCP requests."""
+    """Home Assistant view for MCP requests.
+
+    Not a dataclass: Inherits from HomeAssistantView, a Home Assistant framework
+    base class that defines the HTTP view contract. Framework subclasses must
+    follow their parent class's initialization and registration patterns. TODO:
+    Investigate whether dataclass inheritance with Home Assistant view base classes
+    is viable.
+    """
 
     url = "/api/hamster_mcp"
     name = "api:hamster_mcp"

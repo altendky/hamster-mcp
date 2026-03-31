@@ -12,6 +12,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 import pytest
 
+from hamster_mcp.component.http import HamsterEffectHandler
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -71,6 +73,7 @@ async def http_client(
 ) -> AsyncIterator[TestClient[web.Request, web.Application]]:
     """Create an HTTP test client for the MCP view."""
     transport = setup_integration.transport
+    assert transport is not None, "transport not set"
 
     # Create a test app with the transport handler
     app = web.Application()
@@ -196,10 +199,11 @@ class TestFullMCPFlow:
 
         # Get the effect handler from the runtime and mock its method
         transport = setup_integration.transport
+        assert transport is not None, "transport not set"
 
-        # Mock at the effect handler level
+        # Mock at the class level (required for slotted dataclasses)
         with patch.object(
-            transport._effect_handler,
+            HamsterEffectHandler,
             "execute_service_call",
             new_callable=AsyncMock,
         ) as mock_call:

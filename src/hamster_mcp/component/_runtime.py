@@ -8,6 +8,7 @@ even if an object is retained past an options-change reload.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=False, slots=True)
 class EntryRuntime:
     """Per-config-entry mutable state.
 
@@ -43,24 +45,19 @@ class EntryRuntime:
 
     Structural options (e.g. ``enable_services_group``) still require
     a full reload because they change which objects are created.
+
+    Two-phase initialization: ``manager``, ``transport``, and ``wakeup_task``
+    are set after construction because ``SessionManager`` receives
+    ``self.build_instructions`` as the ``instructions_factory`` parameter.
     """
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        docs_store: Store[dict[str, Any]],
-    ) -> None:
-        self.hass = hass
-        self.entry = entry
-        self.docs_store = docs_store
-
-        # Set after construction (two-phase init) because
-        # SessionManager.__init__ receives self.build_instructions
-        # as the instructions_factory parameter.
-        self.manager: SessionManager = None  # type: ignore[assignment]
-        self.transport: AiohttpMCPTransport = None  # type: ignore[assignment]
-        self.wakeup_task: asyncio.Task[None] = None  # type: ignore[assignment]
+    hass: HomeAssistant
+    entry: ConfigEntry
+    docs_store: Store[dict[str, Any]]
+    # Two-phase init fields (set after construction)
+    manager: SessionManager | None = None
+    transport: AiohttpMCPTransport | None = None
+    wakeup_task: asyncio.Task[None] | None = None
 
     # -- Lazy config reads ------------------------------------------------
 
@@ -114,6 +111,7 @@ class EntryRuntime:
         # Import here to avoid circular import at module level.
         from hamster_mcp.component import _refresh_websocket_docs
 
+        assert self.manager is not None, "manager not set (two-phase init incomplete)"
         return await _refresh_websocket_docs(
             self.hass,
             self.manager,
@@ -139,15 +137,20 @@ class EntryRuntime:
 
     async def rebuild_services(self) -> None:
         """Rebuild the services group after service changes."""
+        assert self.manager is not None, "manager not set (two-phase init incomplete)"
         try:
             descriptions = await async_get_all_descriptions(self.hass)
-            services_group = ServicesGroup(descriptions)
+            services_group = ServicesGroup.create(descriptions)
             self.manager.update_services_group(services_group)
         except Exception:
             _LOGGER.warning("Failed to rebuild services group, keeping existing")
 
     def on_service_event(self, event: Event) -> None:
         """Handle service registered/removed events."""
+        assert self.manager is not None, "manager not set (two-phase init incomplete)"
+        assert self.transport is not None, (
+            "transport not set (two-phase init incomplete)"
+        )
         self.manager.notify_services_changed(time.monotonic())
         self.transport.notify_activity()
 
