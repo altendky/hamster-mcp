@@ -32,3 +32,6 @@ htmlcov/
 
 # ruff
 .ruff_cache/
+
+# lychee
+.lycheecache
