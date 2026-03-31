@@ -53,8 +53,9 @@ async def setup_integration(
             }
         },
     ):
-        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        setup_ok = await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
+        assert setup_ok
 
     runtime: EntryRuntime = mock_config_entry.runtime_data
     yield runtime
