@@ -11,8 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hamster_mcp.component.const import DOMAIN
-
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import (  # type: ignore[import-untyped]
@@ -74,8 +72,8 @@ class TestServicesGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Search in services group
         services_group = manager._registry.get("services")
@@ -100,8 +98,8 @@ class TestServicesGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         services_group = manager._registry.get("services")
         assert services_group is not None
@@ -127,8 +125,8 @@ class TestServicesGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         services_group = manager._registry.get("services")
         assert services_group is not None
@@ -173,8 +171,8 @@ class TestHassGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         hass_group = manager._registry.get("hass")
         assert hass_group is not None
@@ -201,8 +199,8 @@ class TestHassGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         hass_group = manager._registry.get("hass")
         assert hass_group is not None
@@ -232,8 +230,8 @@ class TestHassGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         hass_group = manager._registry.get("hass")
         assert hass_group is not None
@@ -265,8 +263,8 @@ class TestSupervisorGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -293,8 +291,8 @@ class TestSupervisorGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -322,8 +320,8 @@ class TestSupervisorGroupFlow:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -364,8 +362,8 @@ class TestCrossGroupSearch:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Search for "info" should find results in multiple groups
         result = manager._registry.search_all("info")
@@ -401,8 +399,8 @@ class TestCrossGroupSearch:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Search only in services group
         result = manager._registry.search_all("light", path_filter="services")
@@ -430,8 +428,8 @@ class TestPathResolution:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("services/light.turn_on")
         assert result is not None
@@ -458,8 +456,8 @@ class TestPathResolution:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("hass/get_states")
         assert result is not None
@@ -484,8 +482,8 @@ class TestPathResolution:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("supervisor/core/logs")
         assert result is not None
@@ -507,8 +505,8 @@ class TestPathResolution:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         result = manager._registry.resolve_path("unknown/some/path")
         assert result is None
@@ -533,8 +531,8 @@ class TestErrorConditions:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         services_group = manager._registry.get("services")
         assert services_group is not None
@@ -563,8 +561,8 @@ class TestErrorConditions:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         services_group = manager._registry.get("services")
         assert services_group is not None

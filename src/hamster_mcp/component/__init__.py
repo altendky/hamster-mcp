@@ -11,13 +11,11 @@ import contextlib
 import importlib.metadata
 import logging
 import os
-import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from homeassistant.const import EVENT_SERVICE_REGISTERED, EVENT_SERVICE_REMOVED
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.helpers.storage import Store
 import voluptuous as vol
@@ -31,10 +29,9 @@ from hamster_mcp.mcp._core.types import ServerInfo
 from hamster_mcp.mcp._io.aiohttp import AiohttpMCPTransport
 from hamster_mcp.mcp._io.resources import load_all_resources
 
+from ._runtime import EntryRuntime
 from .const import (
     DEFAULT_AUTO_FETCH_DOCS,
-    DEFAULT_DOCS_GIT_REF,
-    DEFAULT_DOCS_URL_TEMPLATE,
     DEFAULT_ENABLE_SERVICES_GROUP,
     DEFAULT_IDLE_TIMEOUT,
     DOMAIN,
@@ -43,10 +40,8 @@ from .const import (
 from .http import HamsterEffectHandler, HamsterMCPView
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core import Event, HomeAssistant
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -316,43 +311,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Returns:
         True if setup was successful
     """
-    # Read config from entry options
+    # Read structural option (requires full reload to change)
     enable_services_group = entry.options.get(
         "enable_services_group", DEFAULT_ENABLE_SERVICES_GROUP
     )
     auto_fetch_docs = entry.options.get("auto_fetch_docs", DEFAULT_AUTO_FETCH_DOCS)
-    docs_url_template = entry.options.get(
-        "docs_url_template", DEFAULT_DOCS_URL_TEMPLATE
+
+    # --- Docs store ---
+    docs_store: Store[dict[str, Any]] = Store(
+        hass, _DOCS_STORE_VERSION, _DOCS_STORE_KEY
     )
-    docs_git_ref = entry.options.get("docs_git_ref", DEFAULT_DOCS_GIT_REF)
+
+    # --- EntryRuntime (two-phase init) ---
+    # Phase 1: construct runtime with hass, entry, docs_store.
+    # SessionManager needs runtime.build_instructions as its factory,
+    # so the runtime must exist before the manager.
+    runtime = EntryRuntime(hass, entry, docs_store)
 
     # Create components
     server_info = ServerInfo(name="hamster-mcp", version=_HAMSTER_VERSION)
-
-    def build_instructions(user_id: str | None, user_name: str | None) -> str | None:
-        """Build MCP instructions with current HA state.
-
-        Called once per session at initialize time so the base URL
-        reflects the current configuration without requiring a restart.
-        Returns None when no URL is available (e.g. during early startup).
-        """
-        try:
-            base_url = get_url(hass)
-        except NoURLAvailableError:
-            return None
-        parts = [f"Home Assistant instance URL: {base_url}"]
-        if user_name:
-            parts.append(f"Authenticated user: {user_name}")
-        return "\n".join(parts)
-
-    # Load static resource documents (I/O happens here, not in _core)
     resources = load_all_resources()
 
     manager = SessionManager(
         server_info=server_info,
         resources=resources,
         idle_timeout=DEFAULT_IDLE_TIMEOUT,
-        instructions_factory=build_instructions,
+        instructions_factory=runtime.build_instructions,
     )
 
     effect_handler = HamsterEffectHandler(hass)
@@ -363,12 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     manager.update_registry(registry)
 
-    # --- Docs enrichment ---
-    docs_store: Store[dict[str, Any]] = Store(
-        hass, _DOCS_STORE_VERSION, _DOCS_STORE_KEY
-    )
-
-    # Apply cached descriptions immediately (no network needed)
+    # --- Docs enrichment (apply cache) ---
     cached = await docs_store.async_load()
     if cached is not None and isinstance(cached.get("descriptions"), dict):
         try:
@@ -380,129 +359,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.warning("Failed to apply cached WebSocket docs")
 
-    # Create the refresh function closure used by both service and button
-    async def _do_refresh_docs(
-        *,
-        git_ref: str = docs_git_ref,
-    ) -> dict[str, int]:
-        return await _refresh_websocket_docs(
-            hass,
-            manager,
-            docs_store,
-            url_template=docs_url_template,
-            git_ref=git_ref,
-        )
-
     # Register the hamster.refresh_docs service
-    async def _handle_refresh_docs(call: Any) -> None:
-        """Handle the refresh_docs service call."""
-        ref = call.data.get("git_ref", docs_git_ref)
-        try:
-            result = await _do_refresh_docs(git_ref=ref)
-            _LOGGER.info(
-                "WebSocket docs refreshed via service: "
-                "%d/%d commands enriched (ref=%s)",
-                result["commands_enriched"],
-                result["commands_total"],
-                ref,
-            )
-        except Exception:
-            _LOGGER.exception("Failed to refresh WebSocket docs via service")
-
     hass.services.async_register(
         DOMAIN,
         "refresh_docs",
-        _handle_refresh_docs,
+        runtime.handle_refresh_docs_service,
         schema=_REFRESH_DOCS_SCHEMA,
     )
 
-    # Create services group rebuild callback for the transport
-    # Only services group needs rebuilding on service events;
-    # hass and supervisor groups don't change at runtime
-    rebuild_services_callback: Callable[[], Awaitable[None]] | None = None
-    if enable_services_group:
-
-        async def _rebuild_services() -> None:
-            """Rebuild the services group after service changes."""
-            try:
-                descriptions = await async_get_all_descriptions(hass)
-                services_group = ServicesGroup(descriptions)
-                manager.update_services_group(services_group)
-            except Exception:
-                _LOGGER.warning("Failed to rebuild services group, keeping existing")
-
-        rebuild_services_callback = _rebuild_services
-
     # Create transport
+    rebuild_services_callback = (
+        runtime.rebuild_services if enable_services_group else None
+    )
     transport = AiohttpMCPTransport(
         manager, effect_handler, index_rebuild_callback=rebuild_services_callback
     )
 
+    # Phase 2: wire manager and transport into runtime
+    runtime.manager = manager
+    runtime.transport = transport
+
     # Register HTTP view
+    # NOTE: HA's aiohttp router has no unregister API; on reload the new
+    # view shadows the old one, and transport.shutdown() makes the old
+    # view return 503.
     view = HamsterMCPView(transport)
     hass.http.register_view(view)
 
     # Listen for service events (only if services group is enabled)
     if enable_services_group:
-
-        def on_service_event(event: Event) -> None:
-            """Handle service registered/removed events."""
-            manager.notify_services_changed(time.monotonic())
-            transport.notify_activity()
-
         unsub_registered = hass.bus.async_listen(
-            EVENT_SERVICE_REGISTERED, on_service_event
+            EVENT_SERVICE_REGISTERED, runtime.on_service_event
         )
-        unsub_removed = hass.bus.async_listen(EVENT_SERVICE_REMOVED, on_service_event)
-
-        # Register cleanup on unload
+        unsub_removed = hass.bus.async_listen(
+            EVENT_SERVICE_REMOVED, runtime.on_service_event
+        )
         entry.async_on_unload(unsub_registered)
         entry.async_on_unload(unsub_removed)
 
     # Start wakeup loop as background task
-    wakeup_task = entry.async_create_background_task(
+    runtime.wakeup_task = entry.async_create_background_task(
         hass,
         transport.start_wakeup_loop(),
         "hamster_mcp_wakeup_loop",
     )
 
-    # Store references for unload
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "manager": manager,
-        "transport": transport,
-        "wakeup_task": wakeup_task,
-        "refresh_docs": _do_refresh_docs,
-    }
+    # Store runtime on the entry for access by entity platforms and unload
+    entry.runtime_data = runtime
 
     # Set up entity platforms (button)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Auto-fetch docs in background if enabled
     if auto_fetch_docs:
-
-        async def _auto_fetch_docs() -> None:
-            """Fetch docs from GitHub in the background."""
-            try:
-                result = await _do_refresh_docs(git_ref=docs_git_ref)
-                _LOGGER.info(
-                    "Auto-fetched WebSocket docs: %d/%d commands enriched (ref=%s)",
-                    result["commands_enriched"],
-                    result["commands_total"],
-                    docs_git_ref,
-                )
-            except Exception:
-                _LOGGER.warning(
-                    "Auto-fetch of WebSocket docs failed (will use cached if available)"
-                )
-
         entry.async_create_background_task(
             hass,
-            _auto_fetch_docs(),
+            runtime.auto_fetch_docs(),
             "hamster_mcp_auto_fetch_docs",
         )
 
-    # Reload integration when options change so captured values are refreshed
+    # Reload integration when options change so structural options
+    # (e.g. enable_services_group) take effect via fresh setup.
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
@@ -530,23 +447,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Remove service
     hass.services.async_remove(DOMAIN, "refresh_docs")
 
-    data = hass.data[DOMAIN].pop(entry.entry_id, None)
-    if data is None:
-        return True
-
-    transport: AiohttpMCPTransport = data["transport"]
-    wakeup_task: asyncio.Task[None] = data["wakeup_task"]
+    runtime: EntryRuntime = entry.runtime_data
 
     # Shutdown transport (new requests return 503)
-    transport.shutdown()
+    runtime.transport.shutdown()
 
     # Stop wakeup loop
-    await transport.stop_wakeup_loop()
+    await runtime.transport.stop_wakeup_loop()
 
     # Cancel the background task if still running
-    if not wakeup_task.done():
-        wakeup_task.cancel()
+    if not runtime.wakeup_task.done():
+        runtime.wakeup_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await wakeup_task
+            await runtime.wakeup_task
 
     return True

@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hamster_mcp.component.const import DOMAIN
 from hamster_mcp.mcp._core.events import Done
 
 if TYPE_CHECKING:
@@ -54,8 +53,8 @@ class TestSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -81,8 +80,8 @@ class TestSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -107,8 +106,8 @@ class TestSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -134,8 +133,8 @@ class TestSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         supervisor_group = manager._registry.get("supervisor")
         assert supervisor_group is not None
@@ -176,8 +175,8 @@ class TestSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         # Search for something that would match supervisor endpoints
         result = manager._registry.search_all("info")
@@ -217,8 +216,8 @@ class TestOtherGroupsWorkWhenSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         services_group = manager._registry.get("services")
         assert services_group is not None
@@ -248,8 +247,8 @@ class TestOtherGroupsWorkWhenSupervisorUnavailable:
             await hass.config_entries.async_setup(mock_config_entry.entry_id)
             await hass.async_block_till_done()
 
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
 
         hass_group = manager._registry.get("hass")
         assert hass_group is not None

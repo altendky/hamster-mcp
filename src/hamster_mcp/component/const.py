@@ -1,6 +1,17 @@
 """Constants for the Hamster MCP integration."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from homeassistant.const import Platform
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+
+    from ._runtime import EntryRuntime
+
+    type HamsterMCPConfigEntry = ConfigEntry[EntryRuntime]
 
 DOMAIN = "hamster_mcp"
 DEFAULT_IDLE_TIMEOUT: float = 1800.0  # 30 minutes

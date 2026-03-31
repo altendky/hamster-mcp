@@ -7,8 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hamster_mcp.component.const import DOMAIN
-
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import (  # type: ignore[import-untyped]
@@ -46,8 +44,7 @@ async def test_async_setup_entry_succeeds(
 
     assert result is True
     assert mock_config_entry.state is ConfigEntryState.LOADED
-    assert DOMAIN in hass.data
-    assert mock_config_entry.entry_id in hass.data[DOMAIN]
+    assert hasattr(mock_config_entry, "runtime_data")
 
 
 async def test_async_unload_entry_succeeds(
@@ -81,8 +78,8 @@ async def test_tool_list_returns_six_tools(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Verify data was stored
-    assert mock_config_entry.entry_id in hass.data[DOMAIN]
+    # Verify runtime_data was stored
+    assert hasattr(mock_config_entry, "runtime_data")
 
     # Check that the 6 tools are available
     from hamster_mcp.mcp._core.tools import TOOLS
@@ -109,8 +106,8 @@ async def test_registry_built_from_descriptions(
         await hass.async_block_till_done()
 
     # Verify registry was built with the service
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
 
     # Search should find the light service
     result = manager._registry.search_all("light")
@@ -129,8 +126,8 @@ async def test_all_three_groups_registered(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
 
     # Check all groups are registered
     services_group = manager._registry.get("services")
@@ -165,8 +162,8 @@ async def test_hass_group_built_from_websocket_api(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
 
     hass_group = manager._registry.get("hass")
     assert hass_group is not None
@@ -189,8 +186,8 @@ async def test_supervisor_group_availability_detected(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
 
     supervisor_group = manager._registry.get("supervisor")
     assert supervisor_group is not None
@@ -210,8 +207,8 @@ async def test_request_after_unload_returns_503(
         await hass.async_block_till_done()
 
         # Get transport before unload
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        transport = data["transport"]
+        runtime = mock_config_entry.runtime_data
+        transport = runtime.transport
 
         # Unload
         await hass.config_entries.async_unload(mock_config_entry.entry_id)
@@ -251,8 +248,8 @@ async def test_index_build_retries_on_failure(
     assert call_count == 3
 
     # Verify registry was built with the service
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
     result = manager._registry.search_all("light")
     assert "light.turn_on" in result
 
@@ -284,8 +281,8 @@ async def test_index_build_all_retries_fail_starts_empty(
     assert call_count == 6
 
     # Verify registry has groups but services is empty
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
 
     # All three groups should still be registered
     assert manager._registry.get("services") is not None
@@ -315,11 +312,15 @@ async def test_service_events_trigger_index_rebuild(
         return {"new_domain": {"new_service": {"description": "New", "fields": {}}}}
 
     with patch(
-        "hamster_mcp.component.async_get_all_descriptions",
+        "hamster_mcp.component._runtime.async_get_all_descriptions",
         side_effect=mock_descriptions,
     ):
-        await hass.config_entries.async_setup(mock_config_entry.entry_id)
-        await hass.async_block_till_done()
+        with patch(
+            "hamster_mcp.component.async_get_all_descriptions",
+            side_effect=mock_descriptions,
+        ):
+            await hass.config_entries.async_setup(mock_config_entry.entry_id)
+            await hass.async_block_till_done()
 
         # Fire a service registered event
         hass.bus.async_fire(
@@ -327,8 +328,8 @@ async def test_service_events_trigger_index_rebuild(
         )
 
         # Wait for debounce (manager default is 0.5s, but we can trigger manually)
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        transport = data["transport"]
+        runtime = mock_config_entry.runtime_data
+        transport = runtime.transport
 
         # Notify activity to wake the loop
         transport.notify_activity()
@@ -362,15 +363,19 @@ async def test_index_refresh_failure_preserves_existing(
         raise RuntimeError("Refresh failed")
 
     with patch(
-        "hamster_mcp.component.async_get_all_descriptions",
+        "hamster_mcp.component._runtime.async_get_all_descriptions",
         side_effect=mock_descriptions,
     ):
-        await hass.config_entries.async_setup(mock_config_entry.entry_id)
-        await hass.async_block_till_done()
+        with patch(
+            "hamster_mcp.component.async_get_all_descriptions",
+            side_effect=mock_descriptions,
+        ):
+            await hass.config_entries.async_setup(mock_config_entry.entry_id)
+            await hass.async_block_till_done()
 
         # Verify initial registry
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        manager = data["manager"]
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
         result = manager._registry.search_all("light")
         assert "light.turn_on" in result
 
@@ -379,7 +384,7 @@ async def test_index_refresh_failure_preserves_existing(
             EVENT_SERVICE_REGISTERED, {"domain": "new", "service": "service"}
         )
 
-        transport = data["transport"]
+        transport = runtime.transport
         transport.notify_activity()
 
         import asyncio
@@ -405,8 +410,8 @@ async def test_unload_cancels_wakeup_task_cleanly(
         await hass.async_block_till_done()
 
         # Get the wakeup task
-        data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        wakeup_task = data["wakeup_task"]
+        runtime = mock_config_entry.runtime_data
+        wakeup_task = runtime.wakeup_task
 
         # Task should be running
         assert not wakeup_task.done()
@@ -469,8 +474,8 @@ async def test_instructions_factory_wired_up(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
     assert manager._instructions_factory is not None
 
 
@@ -485,20 +490,20 @@ async def test_instructions_factory_includes_base_url(
             return_value={},
         ),
         patch(
-            "hamster_mcp.component.get_url",
+            "hamster_mcp.component._runtime.get_url",
             return_value="http://ha.local:8123",
         ),
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
     factory = manager._instructions_factory
 
-    # Mock get_url for factory calls (factory captures hass, calls get_url)
+    # Mock get_url for factory calls (factory is now a bound method on runtime)
     with patch(
-        "hamster_mcp.component.get_url",
+        "hamster_mcp.component._runtime.get_url",
         return_value="http://ha.local:8123",
     ):
         # Call with user info
@@ -528,12 +533,12 @@ async def test_instructions_factory_returns_none_when_no_url(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    manager = data["manager"]
+    runtime = mock_config_entry.runtime_data
+    manager = runtime.manager
     factory = manager._instructions_factory
 
     with patch(
-        "hamster_mcp.component.get_url",
+        "hamster_mcp.component._runtime.get_url",
         side_effect=NoURLAvailableError,
     ):
         result = factory("uid-1", "Kyle")

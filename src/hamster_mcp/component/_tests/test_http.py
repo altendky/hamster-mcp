@@ -12,8 +12,6 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 import pytest
 
-from hamster_mcp.component.const import DOMAIN
-
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -21,6 +19,8 @@ if TYPE_CHECKING:
     from pytest_homeassistant_custom_component.common import (  # type: ignore[import-untyped]
         MockConfigEntry,
     )
+
+    from hamster_mcp.component._runtime import EntryRuntime
 
 # Enable sockets for HTTP tests.  Use the fixture (not the bare marker) to
 # avoid non-deterministic hook-ordering between pytest-socket and
@@ -36,8 +36,8 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 @pytest.fixture
 async def setup_integration(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
-) -> AsyncIterator[dict[str, object]]:
-    """Set up the integration and return the stored data."""
+) -> AsyncIterator[EntryRuntime]:
+    """Set up the integration and return the runtime data."""
     # Mock hass.http since we're testing the view directly
     mock_http = MagicMock()
     mock_http.register_view = MagicMock()
@@ -53,11 +53,12 @@ async def setup_integration(
             }
         },
     ):
-        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        setup_ok = await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
+        assert setup_ok
 
-    data = hass.data[DOMAIN][mock_config_entry.entry_id]
-    yield data
+    runtime: EntryRuntime = mock_config_entry.runtime_data
+    yield runtime
 
     # Cleanup
     await hass.config_entries.async_unload(mock_config_entry.entry_id)
@@ -66,13 +67,10 @@ async def setup_integration(
 
 @pytest.fixture
 async def http_client(
-    setup_integration: dict[str, object],
+    setup_integration: EntryRuntime,
 ) -> AsyncIterator[TestClient[web.Request, web.Application]]:
     """Create an HTTP test client for the MCP view."""
-    from hamster_mcp.mcp._io.aiohttp import AiohttpMCPTransport
-
-    transport = setup_integration["transport"]
-    assert isinstance(transport, AiohttpMCPTransport)
+    transport = setup_integration.transport
 
     # Create a test app with the transport handler
     app = web.Application()
@@ -138,7 +136,7 @@ class TestFullMCPFlow:
     async def test_init_ack_list_call_flow(
         self,
         http_client: TestClient[web.Request, web.Application],
-        setup_integration: dict[str, object],
+        setup_integration: EntryRuntime,
     ) -> None:
         """Test full flow: init -> ack -> tools/list -> tools/call."""
         # Initialize session
@@ -185,7 +183,7 @@ class TestFullMCPFlow:
         self,
         hass: HomeAssistant,
         http_client: TestClient[web.Request, web.Application],
-        setup_integration: dict[str, object],
+        setup_integration: EntryRuntime,
     ) -> None:
         """Test tools/call that executes a service via effect handler.
 
@@ -196,13 +194,8 @@ class TestFullMCPFlow:
 
         session_id = await _init_session(http_client)
 
-        # Get the effect handler from the stored data and mock its method
-        data = setup_integration
-        transport = data["transport"]
-        # Access the effect handler
-        from hamster_mcp.mcp._io.aiohttp import AiohttpMCPTransport
-
-        assert isinstance(transport, AiohttpMCPTransport)
+        # Get the effect handler from the runtime and mock its method
+        transport = setup_integration.transport
 
         # Mock at the effect handler level
         with patch.object(
