@@ -10,7 +10,15 @@ gitignore: true
 config:
   # Disable line length checking --- we use semantic newlines
   MD013: false
+  # Allow duplicate headings under different parents
+  MD024:
+    siblings_only: true
   # Allow <img> for sized icon in README heading
   MD033:
     allowed_elements:
       - img
+  # Allow bold text used as labeled paragraphs
+  MD036: false
+  # Enforce compact table style
+  MD060:
+    style: compact
