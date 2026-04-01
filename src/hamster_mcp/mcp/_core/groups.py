@@ -79,7 +79,7 @@ class GroupRegistry:
     operations across all groups.
     """
 
-    _groups: dict[str, SourceGroup] = field(default_factory=dict)
+    _groups: dict[str, SourceGroup] = field(init=False, default_factory=dict)
 
     def register(self, group: SourceGroup) -> None:
         """Register a group.
