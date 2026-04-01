@@ -110,8 +110,8 @@ class MCPServerSession:
     capabilities: ServerCapabilities
     resources: tuple[ResourceEntry, ...]
     instructions: str | None = None
-    _state: SessionState = SessionState.IDLE
-    _negotiated_version: str | None = None
+    _state: SessionState = field(init=False, default=SessionState.IDLE)
+    _negotiated_version: str | None = field(init=False, default=None)
 
     @property
     def state(self) -> SessionState:
@@ -385,11 +385,13 @@ class SessionManager:
     session_id_factory: Callable[[], str] = _default_session_id_factory
     debounce_delay: float = 0.5
     instructions_factory: Callable[[str | None, str | None], str | None] | None = None
-    _capabilities: ServerCapabilities = field(default_factory=ServerCapabilities)
-    _sessions: dict[str, MCPServerSession] = field(default_factory=dict)
-    _last_activity: dict[str, float] = field(default_factory=dict)
-    _registry: GroupRegistry = field(default_factory=GroupRegistry)
-    _services_changed_at: float | None = None
+    _capabilities: ServerCapabilities = field(
+        init=False, default_factory=ServerCapabilities
+    )
+    _sessions: dict[str, MCPServerSession] = field(init=False, default_factory=dict)
+    _last_activity: dict[str, float] = field(init=False, default_factory=dict)
+    _registry: GroupRegistry = field(init=False, default_factory=GroupRegistry)
+    _services_changed_at: float | None = field(init=False, default=None)
 
     def update_registry(self, registry: GroupRegistry) -> None:
         """Replace the group registry."""
