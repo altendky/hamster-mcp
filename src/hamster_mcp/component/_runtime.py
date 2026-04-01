@@ -59,6 +59,20 @@ class EntryRuntime:
     transport: AiohttpMCPTransport | None = field(init=False, default=None)
     wakeup_task: asyncio.Task[None] | None = field(init=False, default=None)
 
+    # -- Two-phase init guards --------------------------------------------
+
+    def _require_manager(self) -> SessionManager:
+        """Return the manager, raising if two-phase init is incomplete."""
+        if self.manager is None:
+            raise RuntimeError("manager not set (two-phase init incomplete)")
+        return self.manager
+
+    def _require_transport(self) -> AiohttpMCPTransport:
+        """Return the transport, raising if two-phase init is incomplete."""
+        if self.transport is None:
+            raise RuntimeError("transport not set (two-phase init incomplete)")
+        return self.transport
+
     # -- Lazy config reads ------------------------------------------------
 
     @property
@@ -111,10 +125,10 @@ class EntryRuntime:
         # Import here to avoid circular import at module level.
         from hamster_mcp.component import _refresh_websocket_docs
 
-        assert self.manager is not None, "manager not set (two-phase init incomplete)"
+        manager = self._require_manager()
         return await _refresh_websocket_docs(
             self.hass,
-            self.manager,
+            manager,
             self.docs_store,
             url_template=self.docs_url_template,
             git_ref=git_ref if git_ref is not None else self.docs_git_ref,
@@ -137,22 +151,20 @@ class EntryRuntime:
 
     async def rebuild_services(self) -> None:
         """Rebuild the services group after service changes."""
-        assert self.manager is not None, "manager not set (two-phase init incomplete)"
+        manager = self._require_manager()
         try:
             descriptions = await async_get_all_descriptions(self.hass)
             services_group = ServicesGroup.create(descriptions)
-            self.manager.update_services_group(services_group)
+            manager.update_services_group(services_group)
         except Exception:
             _LOGGER.warning("Failed to rebuild services group, keeping existing")
 
     def on_service_event(self, event: Event) -> None:
         """Handle service registered/removed events."""
-        assert self.manager is not None, "manager not set (two-phase init incomplete)"
-        assert self.transport is not None, (
-            "transport not set (two-phase init incomplete)"
-        )
-        self.manager.notify_services_changed(time.monotonic())
-        self.transport.notify_activity()
+        manager = self._require_manager()
+        transport = self._require_transport()
+        manager.notify_services_changed(time.monotonic())
+        transport.notify_activity()
 
     async def auto_fetch_docs(self) -> None:
         """Fetch docs from GitHub in the background."""
