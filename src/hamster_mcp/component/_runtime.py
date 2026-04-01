@@ -8,7 +8,7 @@ even if an object is retained past an options-change reload.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -55,9 +55,9 @@ class EntryRuntime:
     entry: ConfigEntry
     docs_store: Store[dict[str, Any]]
     # Two-phase init fields (set after construction)
-    manager: SessionManager | None = None
-    transport: AiohttpMCPTransport | None = None
-    wakeup_task: asyncio.Task[None] | None = None
+    manager: SessionManager | None = field(init=False, default=None)
+    transport: AiohttpMCPTransport | None = field(init=False, default=None)
+    wakeup_task: asyncio.Task[None] | None = field(init=False, default=None)
 
     # -- Lazy config reads ------------------------------------------------
 
