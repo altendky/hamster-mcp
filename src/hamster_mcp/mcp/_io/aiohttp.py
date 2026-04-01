@@ -131,9 +131,9 @@ class AiohttpMCPTransport:
     manager: SessionManager
     effect_handler: EffectHandler
     index_rebuild_callback: IndexRebuildCallback | None = None
-    _loaded: bool = True
-    _wakeup_task: asyncio.Task[None] | None = None
-    _wakeup_event: asyncio.Event = field(default_factory=asyncio.Event)
+    _loaded: bool = field(init=False, default=True)
+    _wakeup_task: asyncio.Task[None] | None = field(init=False, default=None)
+    _wakeup_event: asyncio.Event = field(init=False, default_factory=asyncio.Event)
 
     async def handle(self, request: web.Request) -> web.Response:
         """Handle an HTTP request.
