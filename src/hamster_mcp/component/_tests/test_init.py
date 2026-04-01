@@ -502,6 +502,7 @@ async def test_instructions_factory_includes_base_url(
     manager = runtime.manager
     assert manager is not None, "manager not set"
     factory = manager.instructions_factory
+    assert factory is not None, "instructions_factory not set"
 
     # Mock get_url for factory calls (factory is now a bound method on runtime)
     with patch(
@@ -539,6 +540,7 @@ async def test_instructions_factory_returns_none_when_no_url(
     manager = runtime.manager
     assert manager is not None, "manager not set"
     factory = manager.instructions_factory
+    assert factory is not None, "instructions_factory not set"
 
     with patch(
         "hamster_mcp.component._runtime.get_url",
