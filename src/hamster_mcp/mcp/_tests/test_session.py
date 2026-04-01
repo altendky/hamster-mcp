@@ -322,7 +322,7 @@ class TestMCPServerSessionToolsCall:
         info = ServerInfo(name="test", version="1.0")
         session = MCPServerSession(info, ServerCapabilities(), ())
         registry = GroupRegistry()
-        group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
+        group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
 
         session.handle(
@@ -701,7 +701,7 @@ class TestSessionManagerRegistry:
     def test_update_registry(self) -> None:
         manager = SessionManager(ServerInfo(name="test", version="1.0"), resources=())
         registry = GroupRegistry()
-        group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
+        group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
         manager.update_registry(registry)
         # Registry is internal, just verify no error
@@ -941,7 +941,7 @@ class TestSessionManagerConcurrency:
             session_id_factory=lambda: "sess",
         )
         registry = GroupRegistry()
-        group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
+        group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
         manager.update_registry(registry)
 
@@ -1042,7 +1042,7 @@ class TestHappyPath:
             session_id_factory=lambda: "test-session-id",
         )
         registry = GroupRegistry()
-        group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
+        group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
         manager.update_registry(registry)
 

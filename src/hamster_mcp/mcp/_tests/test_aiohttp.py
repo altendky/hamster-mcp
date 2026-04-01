@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass, field
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -47,24 +49,39 @@ if TYPE_CHECKING:
     from hamster_mcp.mcp._core.session import WakeupRequest
 
 
+def _default_service_result() -> ServiceCallResult:
+    return ServiceCallResult(success=True, data={"result": "ok"})
+
+
+def _default_hass_result() -> HassCommandResult:
+    return HassCommandResult(success=True, data={"result": "ok"})
+
+
+def _default_supervisor_result() -> SupervisorCallResult:
+    return SupervisorCallResult(success=True, data={"version": "2024.1"})
+
+
+@dataclass(frozen=False, slots=True)
 class MockEffectHandler:
     """Mock effect handler for testing."""
 
-    def __init__(self) -> None:
-        """Initialize mock handler."""
-        self.calls: list[
-            tuple[str, str, dict[str, object] | None, dict[str, object], str | None]
-        ] = []
-        self.hass_calls: list[tuple[str, dict[str, object], str | None]] = []
-        self.supervisor_calls: list[tuple[str, str, dict[str, object], str | None]] = []
-        self.result = ServiceCallResult(success=True, data={"result": "ok"})
-        self.hass_result = HassCommandResult(success=True, data={"result": "ok"})
-        self.supervisor_result = SupervisorCallResult(
-            success=True, data={"version": "2024.1"}
-        )
-        self.should_raise: Exception | None = None
-        self.hass_should_raise: Exception | None = None
-        self.supervisor_should_raise: Exception | None = None
+    calls: list[
+        tuple[str, str, dict[str, object] | None, dict[str, object], str | None]
+    ] = field(default_factory=list)
+    hass_calls: list[tuple[str, dict[str, object], str | None]] = field(
+        default_factory=list
+    )
+    supervisor_calls: list[tuple[str, str, dict[str, object], str | None]] = field(
+        default_factory=list
+    )
+    result: ServiceCallResult = field(default_factory=_default_service_result)
+    hass_result: HassCommandResult = field(default_factory=_default_hass_result)
+    supervisor_result: SupervisorCallResult = field(
+        default_factory=_default_supervisor_result
+    )
+    should_raise: Exception | None = None
+    hass_should_raise: Exception | None = None
+    supervisor_should_raise: Exception | None = None
 
     async def execute_service_call(
         self,
@@ -133,7 +150,7 @@ def session_manager(session_counter: list[int]) -> SessionManager:
     )
     # Add some services via a registry
     registry = GroupRegistry()
-    services_group = ServicesGroup(
+    services_group = ServicesGroup.create(
         {
             "light": {
                 "turn_on": {
@@ -149,7 +166,7 @@ def session_manager(session_counter: list[int]) -> SessionManager:
     )
     registry.register(services_group)
     # Add supervisor group (available)
-    supervisor_group = SupervisorGroup(available=True)
+    supervisor_group = SupervisorGroup.create(available=True)
     registry.register(supervisor_group)
     manager.update_registry(registry)
     return manager
@@ -818,6 +835,7 @@ class TestWakeupLoopErrorResilience:
         original_check = manager.check_wakeups
 
         def patched_check(
+            self_arg: SessionManager,
             now: float,
         ) -> tuple[list[SessionExpired], bool, WakeupRequest | None]:
             nonlocal call_count
@@ -826,23 +844,23 @@ class TestWakeupLoopErrorResilience:
                 raise RuntimeError("Test error")
             return original_check(now)
 
-        manager.check_wakeups = patched_check  # type: ignore[method-assign]
+        # Patch at the class level (required for slotted dataclasses)
+        with patch.object(SessionManager, "check_wakeups", patched_check):
+            # Start loop
+            loop_task = asyncio.create_task(transport.start_wakeup_loop())
 
-        # Start loop
-        loop_task = asyncio.create_task(transport.start_wakeup_loop())
+            # Give it time to fail and retry
+            await asyncio.sleep(0.2)
 
-        # Give it time to fail and retry
-        await asyncio.sleep(0.2)
+            # Loop should still be running
+            assert not loop_task.done()
+            assert call_count >= 2
 
-        # Loop should still be running
-        assert not loop_task.done()
-        assert call_count >= 2
-
-        # Clean up
-        transport.shutdown()
-        loop_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await loop_task
+            # Clean up
+            transport.shutdown()
+            loop_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await loop_task
 
     async def test_rebuild_callback_exception_continues(
         self, effect_handler: MockEffectHandler

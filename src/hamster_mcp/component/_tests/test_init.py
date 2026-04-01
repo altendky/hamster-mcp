@@ -476,7 +476,8 @@ async def test_instructions_factory_wired_up(
 
     runtime = mock_config_entry.runtime_data
     manager = runtime.manager
-    assert manager._instructions_factory is not None
+    assert manager is not None, "manager not set"
+    assert manager.instructions_factory is not None
 
 
 async def test_instructions_factory_includes_base_url(
@@ -499,7 +500,9 @@ async def test_instructions_factory_includes_base_url(
 
     runtime = mock_config_entry.runtime_data
     manager = runtime.manager
-    factory = manager._instructions_factory
+    assert manager is not None, "manager not set"
+    factory = manager.instructions_factory
+    assert factory is not None, "instructions_factory not set"
 
     # Mock get_url for factory calls (factory is now a bound method on runtime)
     with patch(
@@ -535,7 +538,9 @@ async def test_instructions_factory_returns_none_when_no_url(
 
     runtime = mock_config_entry.runtime_data
     manager = runtime.manager
-    factory = manager._instructions_factory
+    assert manager is not None, "manager not set"
+    factory = manager.instructions_factory
+    assert factory is not None, "instructions_factory not set"
 
     with patch(
         "hamster_mcp.component._runtime.get_url",

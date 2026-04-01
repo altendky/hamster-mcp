@@ -53,6 +53,14 @@ Generated files (written to `custom_components/hamster_mcp/brand/`):
 
 - `icon.svg`, `icon.png`, `icon@2x.png`
 
+## Code Conventions
+
+- **Dataclasses everywhere.** All classes use `@dataclass`. Prefer
+  `@dataclass(frozen=True, slots=True)` for immutability; use explicit
+  `frozen=False` when mutation is needed. Use `.create()` classmethods for
+  complex construction. See [Principles](docs/src/project/principles.md#dataclass-convention)
+  for details and exception criteria.
+
 ## Package Structure
 
 - `src/hamster_mcp/mcp/_core/` --- sans-IO protocol core.

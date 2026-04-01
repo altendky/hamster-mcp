@@ -63,7 +63,7 @@ class TestCallTool:
     def _make_registry(self) -> GroupRegistry:
         """Create a registry with a services group."""
         registry = GroupRegistry()
-        group = ServicesGroup(
+        group = ServicesGroup.create(
             {
                 "light": {
                     "turn_on": {"description": "Turn on a light", "fields": {}},
@@ -283,7 +283,7 @@ class TestCallTool:
 
     def test_schema_service_fields(self) -> None:
         registry = GroupRegistry()
-        group = ServicesGroup(
+        group = ServicesGroup.create(
             {
                 "light": {
                     "turn_on": {
@@ -334,7 +334,7 @@ class TestCallToolArgumentValidation:
 
     def _make_registry(self) -> GroupRegistry:
         registry = GroupRegistry()
-        group = ServicesGroup({"light": {"turn_on": {"description": "Turn on"}}})
+        group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         registry.register(group)
         return registry
 

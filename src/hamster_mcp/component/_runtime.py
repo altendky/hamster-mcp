@@ -8,6 +8,7 @@ even if an object is retained past an options-change reload.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=False, slots=True)
 class EntryRuntime:
     """Per-config-entry mutable state.
 
@@ -43,24 +45,33 @@ class EntryRuntime:
 
     Structural options (e.g. ``enable_services_group``) still require
     a full reload because they change which objects are created.
+
+    Two-phase initialization: ``manager``, ``transport``, and ``wakeup_task``
+    are set after construction because ``SessionManager`` receives
+    ``self.build_instructions`` as the ``instructions_factory`` parameter.
     """
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        docs_store: Store[dict[str, Any]],
-    ) -> None:
-        self.hass = hass
-        self.entry = entry
-        self.docs_store = docs_store
+    hass: HomeAssistant
+    entry: ConfigEntry
+    docs_store: Store[dict[str, Any]]
+    # Two-phase init fields (set after construction)
+    manager: SessionManager | None = field(init=False, default=None)
+    transport: AiohttpMCPTransport | None = field(init=False, default=None)
+    wakeup_task: asyncio.Task[None] | None = field(init=False, default=None)
 
-        # Set after construction (two-phase init) because
-        # SessionManager.__init__ receives self.build_instructions
-        # as the instructions_factory parameter.
-        self.manager: SessionManager = None  # type: ignore[assignment]
-        self.transport: AiohttpMCPTransport = None  # type: ignore[assignment]
-        self.wakeup_task: asyncio.Task[None] = None  # type: ignore[assignment]
+    # -- Two-phase init guards --------------------------------------------
+
+    def _require_manager(self) -> SessionManager:
+        """Return the manager, raising if two-phase init is incomplete."""
+        if self.manager is None:
+            raise RuntimeError("manager not set (two-phase init incomplete)")
+        return self.manager
+
+    def _require_transport(self) -> AiohttpMCPTransport:
+        """Return the transport, raising if two-phase init is incomplete."""
+        if self.transport is None:
+            raise RuntimeError("transport not set (two-phase init incomplete)")
+        return self.transport
 
     # -- Lazy config reads ------------------------------------------------
 
@@ -114,9 +125,10 @@ class EntryRuntime:
         # Import here to avoid circular import at module level.
         from hamster_mcp.component import _refresh_websocket_docs
 
+        manager = self._require_manager()
         return await _refresh_websocket_docs(
             self.hass,
-            self.manager,
+            manager,
             self.docs_store,
             url_template=self.docs_url_template,
             git_ref=git_ref if git_ref is not None else self.docs_git_ref,
@@ -139,17 +151,20 @@ class EntryRuntime:
 
     async def rebuild_services(self) -> None:
         """Rebuild the services group after service changes."""
+        manager = self._require_manager()
         try:
             descriptions = await async_get_all_descriptions(self.hass)
-            services_group = ServicesGroup(descriptions)
-            self.manager.update_services_group(services_group)
+            services_group = ServicesGroup.create(descriptions)
+            manager.update_services_group(services_group)
         except Exception:
             _LOGGER.warning("Failed to rebuild services group, keeping existing")
 
     def on_service_event(self, event: Event) -> None:
         """Handle service registered/removed events."""
-        self.manager.notify_services_changed(time.monotonic())
-        self.transport.notify_activity()
+        manager = self._require_manager()
+        transport = self._require_transport()
+        manager.notify_services_changed(time.monotonic())
+        transport.notify_activity()
 
     async def auto_fetch_docs(self) -> None:
         """Fetch docs from GitHub in the background."""

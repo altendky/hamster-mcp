@@ -19,17 +19,17 @@ class TestHassGroupProtocol:
 
     def test_implements_protocol(self) -> None:
         """HassGroup satisfies the SourceGroup protocol."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         assert isinstance(group, SourceGroup)
 
     def test_name_property(self) -> None:
         """Group name is 'hass'."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         assert group.name == "hass"
 
     def test_available_property(self) -> None:
         """Hass commands are always available."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         assert group.available is True
 
 
@@ -38,7 +38,7 @@ class TestHassGroupConstruction:
 
     def test_empty_commands(self) -> None:
         """Empty commands dict creates empty group."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         assert group.has_command("get_states") is False
 
     def test_commands_stored(self) -> None:
@@ -49,7 +49,7 @@ class TestHassGroupConstruction:
                 schema={"fields": {}},
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         assert group.has_command("get_states") is True
 
 
@@ -80,7 +80,7 @@ class TestHassGroupSearch:
                 description="Call a Home Assistant service",
             ),
         }
-        return HassGroup(commands)
+        return HassGroup.create(commands)
 
     def test_search_finds_by_command_type(self) -> None:
         """Search finds commands by type."""
@@ -136,7 +136,7 @@ class TestHassGroupExplain:
                 description="Get all entity states",
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         result = group.explain("get_states")
         assert result is not None
         assert "get_states" in result
@@ -167,7 +167,7 @@ class TestHassGroupExplain:
                 },
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         result = group.explain("call_service")
         assert result is not None
         assert "domain" in result
@@ -183,14 +183,14 @@ class TestHassGroupExplain:
                 description="List entities",
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         result = group.explain("config/entity_registry/list")
         assert result is not None
         assert "config/entity_registry/list" in result
 
     def test_explain_unknown_command(self) -> None:
         """Explain returns None for unknown command."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         result = group.explain("unknown")
         assert result is None
 
@@ -210,7 +210,7 @@ class TestHassGroupSchema:
                 },
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         result = group.schema("call_service")
         assert result is not None
         assert "domain" in result
@@ -224,14 +224,14 @@ class TestHassGroupSchema:
                 schema={"fields": {}},
             )
         }
-        group = HassGroup(commands)
+        group = HassGroup.create(commands)
         result = group.schema("get_states")
         assert result is not None
         assert "No parameters required" in result
 
     def test_schema_unknown_command(self) -> None:
         """Schema returns None for unknown command."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         result = group.schema("unknown")
         assert result is None
 
@@ -256,7 +256,7 @@ class TestHassGroupHasCommand:
                 schema={"fields": {}},
             ),
         }
-        return HassGroup(commands)
+        return HassGroup.create(commands)
 
     def test_has_known_command(self) -> None:
         """has_command returns True for known command."""
@@ -276,7 +276,7 @@ class TestHassGroupHasCommand:
 
     def test_unknown_command(self) -> None:
         """has_command returns False for unknown command."""
-        group = HassGroup({})
+        group = HassGroup.create({})
         assert group.has_command("unknown") is False
 
 
@@ -303,7 +303,7 @@ class TestHassGroupParseCallArgs:
                 schema={"fields": {}},
             ),
         }
-        return HassGroup(commands)
+        return HassGroup.create(commands)
 
     def test_valid_command_returns_effect(self) -> None:
         """Valid command returns HassCommand effect."""

@@ -16,22 +16,22 @@ class TestSupervisorGroupProtocol:
 
     def test_implements_protocol(self) -> None:
         """SupervisorGroup satisfies the SourceGroup protocol."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         assert isinstance(group, SourceGroup)
 
     def test_name_property(self) -> None:
         """Group name is 'supervisor'."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         assert group.name == "supervisor"
 
     def test_available_property_true(self) -> None:
         """Availability reflects constructor parameter (True)."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         assert group.available is True
 
     def test_available_property_false(self) -> None:
         """Availability reflects constructor parameter (False)."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         assert group.available is False
 
 
@@ -40,30 +40,30 @@ class TestSupervisorGroupAvailability:
 
     def test_search_when_unavailable(self) -> None:
         """Search returns unavailability message when not available."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         result = group.search("logs")
         assert "not available" in result.lower()
 
     def test_explain_when_unavailable(self) -> None:
         """Explain returns None when not available."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         result = group.explain("core/logs")
         assert result is None
 
     def test_schema_when_unavailable(self) -> None:
         """Schema returns None when not available."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         result = group.schema("core/logs")
         assert result is None
 
     def test_has_command_when_unavailable(self) -> None:
         """has_command returns False when not available."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         assert group.has_command("core/logs") is False
 
     def test_parse_call_args_when_unavailable(self) -> None:
         """parse_call_args returns error when not available."""
-        group = SupervisorGroup(available=False)
+        group = SupervisorGroup.create(available=False)
         result = group.parse_call_args("core/logs", {}, user_id=None)
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -75,7 +75,7 @@ class TestSupervisorGroupSearch:
 
     def test_search_finds_logs_endpoints(self) -> None:
         """Search 'logs' finds all log endpoints."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("logs")
         assert "core/logs" in result
         assert "supervisor/logs" in result
@@ -84,7 +84,7 @@ class TestSupervisorGroupSearch:
 
     def test_search_finds_info_endpoints(self) -> None:
         """Search 'info' finds info endpoints."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("info")
         assert "core/info" in result
         assert "supervisor/info" in result
@@ -92,26 +92,26 @@ class TestSupervisorGroupSearch:
 
     def test_search_finds_addons(self) -> None:
         """Search 'addon' finds addon-related endpoints."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("addon")
         assert "addons" in result
         assert "addons/{slug}/info" in result
 
     def test_search_case_insensitive(self) -> None:
         """Search is case-insensitive."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("LOGS")
         assert "logs" in result.lower()
 
     def test_search_no_match(self) -> None:
         """Search with no matches returns appropriate message."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("nonexistent")
         assert 'No endpoints found matching "nonexistent"' in result
 
     def test_search_with_path_filter(self) -> None:
         """Search with path filter restricts results."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("info", path_filter="core")
         assert "core/info" in result
         # Should not include supervisor/info or host/info
@@ -120,7 +120,7 @@ class TestSupervisorGroupSearch:
 
     def test_search_no_match_with_filter(self) -> None:
         """Search with no matches and filter returns appropriate message."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.search("nonexistent", path_filter="core")
         assert 'No endpoints found matching "nonexistent"' in result
         assert "core" in result
@@ -131,7 +131,7 @@ class TestSupervisorGroupExplain:
 
     def test_explain_known_endpoint(self) -> None:
         """Explain returns formatted info for known endpoint."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.explain("core/logs")
         assert result is not None
         assert "core/logs" in result
@@ -140,21 +140,21 @@ class TestSupervisorGroupExplain:
 
     def test_explain_shows_returns_text(self) -> None:
         """Explain shows return type for text endpoints."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.explain("core/logs")
         assert result is not None
         assert "Plain text" in result or "logs" in result.lower()
 
     def test_explain_shows_returns_json(self) -> None:
         """Explain shows return type for JSON endpoints."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.explain("core/info")
         assert result is not None
         assert "JSON" in result
 
     def test_explain_with_path_params(self) -> None:
         """Explain describes path parameters."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.explain("addons/{slug}/info")
         assert result is not None
         assert "slug" in result
@@ -162,7 +162,7 @@ class TestSupervisorGroupExplain:
 
     def test_explain_unknown_endpoint(self) -> None:
         """Explain returns None for unknown endpoint."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.explain("unknown/endpoint")
         assert result is None
 
@@ -172,14 +172,14 @@ class TestSupervisorGroupSchema:
 
     def test_schema_no_params(self) -> None:
         """Schema for endpoint with no params shows that."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.schema("core/logs")
         assert result is not None
         assert "No parameters required" in result
 
     def test_schema_with_path_params(self) -> None:
         """Schema includes path parameter info."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.schema("addons/{slug}/logs")
         assert result is not None
         assert "slug" in result
@@ -187,7 +187,7 @@ class TestSupervisorGroupSchema:
 
     def test_schema_unknown_endpoint(self) -> None:
         """Schema returns None for unknown endpoint."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.schema("unknown")
         assert result is None
 
@@ -197,14 +197,14 @@ class TestSupervisorGroupHasCommand:
 
     def test_has_known_endpoint(self) -> None:
         """has_command returns True for known endpoint."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         assert group.has_command("core/logs") is True
         assert group.has_command("host/info") is True
         assert group.has_command("addons/{slug}/info") is True
 
     def test_has_unknown_endpoint(self) -> None:
         """has_command returns False for unknown endpoint."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         assert group.has_command("unknown") is False
         assert group.has_command("foo/bar") is False
 
@@ -214,7 +214,7 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_simple_endpoint_returns_effect(self) -> None:
         """Simple endpoint returns SupervisorCall effect."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args("core/logs", {}, user_id=None)
         assert isinstance(result, SupervisorCall)
         assert result.method == "GET"
@@ -225,14 +225,14 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_endpoint_with_user_id(self) -> None:
         """User ID is passed through."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args("core/logs", {}, user_id="user123")
         assert isinstance(result, SupervisorCall)
         assert result.user_id == "user123"
 
     def test_path_param_substitution(self) -> None:
         """Path parameters are substituted in the API path."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args(
             "addons/{slug}/logs", {"slug": "my_addon"}, user_id=None
         )
@@ -243,7 +243,7 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_missing_path_param_error(self) -> None:
         """Missing path parameter returns error."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args("addons/{slug}/logs", {}, user_id=None)
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -251,7 +251,7 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_invalid_path_param_type_error(self) -> None:
         """Non-string path parameter returns error."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args(
             "addons/{slug}/logs",
             {"slug": 123},
@@ -263,7 +263,7 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_unknown_endpoint_error(self) -> None:
         """Unknown endpoint returns error."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args("unknown/endpoint", {}, user_id=None)
         assert isinstance(result, Done)
         assert result.result.is_error
@@ -271,7 +271,7 @@ class TestSupervisorGroupParseCallArgs:
 
     def test_extra_params_passed_through(self) -> None:
         """Extra parameters (not path params) are passed through."""
-        group = SupervisorGroup(available=True)
+        group = SupervisorGroup.create(available=True)
         result = group.parse_call_args(
             "addons/{slug}/logs", {"slug": "my_addon", "lines": 100}, user_id=None
         )

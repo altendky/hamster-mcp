@@ -7,7 +7,7 @@ instruction (ReceiveResult).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import enum
 import json
 import secrets
@@ -98,6 +98,7 @@ class SessionState(enum.Enum):
     CLOSED = "closed"
 
 
+@dataclass(frozen=False, slots=True)
 class MCPServerSession:
     """Per-session state machine.
 
@@ -105,20 +106,12 @@ class MCPServerSession:
     Only SessionManager interacts with sessions.
     """
 
-    def __init__(
-        self,
-        server_info: ServerInfo,
-        capabilities: ServerCapabilities,
-        resources: tuple[ResourceEntry, ...],
-        instructions: str | None = None,
-    ) -> None:
-        """Initialize a new session."""
-        self._state = SessionState.IDLE
-        self._server_info = server_info
-        self._capabilities = capabilities
-        self._resources = resources
-        self._instructions = instructions
-        self._negotiated_version: str | None = None
+    server_info: ServerInfo
+    capabilities: ServerCapabilities
+    resources: tuple[ResourceEntry, ...]
+    instructions: str | None = None
+    _state: SessionState = field(init=False, default=SessionState.IDLE)
+    _negotiated_version: str | None = field(init=False, default=None)
 
     @property
     def state(self) -> SessionState:
@@ -211,10 +204,10 @@ class MCPServerSession:
         return SessionResponse(
             body=build_initialize_response(
                 message.id,
-                self._server_info,
-                self._capabilities,
+                self.server_info,
+                self.capabilities,
                 self._negotiated_version,
-                instructions=self._instructions,
+                instructions=self.instructions,
             )
         )
 
@@ -304,7 +297,7 @@ class MCPServerSession:
             )
 
         # Dispatch to tool
-        effect = call_tool(name, arguments, registry, user_id, self._resources)
+        effect = call_tool(name, arguments, registry, user_id, self.resources)
         return SessionToolCall(request_id=message.id, effect=effect)
 
     def _handle_resources_list(
@@ -319,7 +312,7 @@ class MCPServerSession:
                 description=entry.description,
                 mime_type="text/markdown",
             )
-            for entry in self._resources
+            for entry in self.resources
         )
         return SessionResponse(
             body=build_resource_list_response(message.id, mcp_resources)
@@ -339,7 +332,7 @@ class MCPServerSession:
                 request_id=message.id,
             )
 
-        entry = _read_resource(self._resources, uri)
+        entry = _read_resource(self.resources, uri)
         if entry is None:
             return SessionError(
                 code=INVALID_PARAMS,
@@ -377,45 +370,28 @@ class WakeupRequest:
 # --- Session Manager ---
 
 
+def _default_session_id_factory() -> str:
+    """Default session ID factory using secure random hex."""
+    return secrets.token_hex(16)
+
+
+@dataclass(frozen=False, slots=True)
 class SessionManager:
     """Multi-session container and HTTP-to-protocol pipeline."""
 
-    def __init__(
-        self,
-        server_info: ServerInfo,
-        resources: tuple[ResourceEntry, ...],
-        idle_timeout: float = 1800.0,
-        session_id_factory: Callable[[], str] | None = None,
-        debounce_delay: float = 0.5,
-        instructions_factory: Callable[[str | None, str | None], str | None]
-        | None = None,
-    ) -> None:
-        """Initialize the session manager.
-
-        Args:
-            server_info: Server identification
-            resources: Pre-loaded static resource entries
-            idle_timeout: Session idle timeout in seconds (default 30 minutes)
-            session_id_factory: Factory for generating session IDs
-            debounce_delay: Delay for service index regeneration debouncing
-            instructions_factory: Callable taking (user_id, user_name) that
-                returns an MCP instructions string, or None.  Called once per
-                session at initialize time.
-        """
-        self._server_info = server_info
-        self._resources = resources
-        self._capabilities = ServerCapabilities()
-        self._idle_timeout = idle_timeout
-        self._session_id_factory = session_id_factory or (lambda: secrets.token_hex(16))
-        self._debounce_delay = debounce_delay
-        self._instructions_factory = instructions_factory
-
-        self._sessions: dict[str, MCPServerSession] = {}
-        self._last_activity: dict[str, float] = {}
-        self._registry = GroupRegistry()
-
-        # Debounce state for service index regeneration
-        self._services_changed_at: float | None = None
+    server_info: ServerInfo
+    resources: tuple[ResourceEntry, ...]
+    idle_timeout: float = 1800.0
+    session_id_factory: Callable[[], str] = _default_session_id_factory
+    debounce_delay: float = 0.5
+    instructions_factory: Callable[[str | None, str | None], str | None] | None = None
+    _capabilities: ServerCapabilities = field(
+        init=False, default_factory=ServerCapabilities
+    )
+    _sessions: dict[str, MCPServerSession] = field(init=False, default_factory=dict)
+    _last_activity: dict[str, float] = field(init=False, default_factory=dict)
+    _registry: GroupRegistry = field(init=False, default_factory=GroupRegistry)
+    _services_changed_at: float | None = field(init=False, default=None)
 
     def update_registry(self, registry: GroupRegistry) -> None:
         """Replace the group registry."""
@@ -713,7 +689,7 @@ class SessionManager:
     ) -> ReceiveResult:
         """Create a new session and handle the initialize request."""
         # Generate session ID
-        session_id = self._session_id_factory()
+        session_id = self.session_id_factory()
 
         # Validate session ID (must be visible ASCII 0x21-0x7E)
         if not self._is_valid_session_id(session_id):
@@ -724,16 +700,16 @@ class SessionManager:
         #       to report factory errors instead of letting them propagate
         #       unobserved through the I/O layer.
         instructions = (
-            self._instructions_factory(user_id, user_name)
-            if self._instructions_factory is not None
+            self.instructions_factory(user_id, user_name)
+            if self.instructions_factory is not None
             else None
         )
 
         # Create session
         session = MCPServerSession(
-            self._server_info,
+            self.server_info,
             self._capabilities,
-            self._resources,
+            self.resources,
             instructions=instructions,
         )
         self._sessions[session_id] = session
@@ -820,7 +796,7 @@ class SessionManager:
         # Check for expired sessions
         expired_ids = []
         for session_id, last_activity in self._last_activity.items():
-            expiry_time = last_activity + self._idle_timeout
+            expiry_time = last_activity + self.idle_timeout
             if now >= expiry_time:
                 expired_ids.append(session_id)
             elif next_expiry is None or expiry_time < next_expiry:
@@ -838,7 +814,7 @@ class SessionManager:
         should_regenerate = False
         debounce_deadline: float | None = None
         if self._services_changed_at is not None:
-            debounce_deadline = self._services_changed_at + self._debounce_delay
+            debounce_deadline = self._services_changed_at + self.debounce_delay
             if now >= debounce_deadline:
                 should_regenerate = True
                 self._services_changed_at = None

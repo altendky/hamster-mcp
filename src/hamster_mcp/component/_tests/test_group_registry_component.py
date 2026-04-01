@@ -105,7 +105,7 @@ class TestGroupRegistryUpdateServices:
         new_descriptions: dict[str, dict[str, object]] = {
             "switch": {"toggle": {"description": "Toggle", "fields": {}}}
         }
-        new_services_group = ServicesGroup(new_descriptions)
+        new_services_group = ServicesGroup.create(new_descriptions)
         manager._registry.update_group(new_services_group)
 
         # Old service gone, new service present
