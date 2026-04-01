@@ -54,9 +54,9 @@ class InternalConnection:
     supported_features: dict[str, float] = field(default_factory=dict)
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger(__name__))
     # Result capture
-    _result_event: asyncio.Event = field(default_factory=asyncio.Event)
-    result: object = None
-    error: tuple[str, str] | None = None  # (code, message)
+    _result_event: asyncio.Event = field(init=False, default_factory=asyncio.Event)
+    result: object = field(init=False, default=None)
+    error: tuple[str, str] | None = field(init=False, default=None)  # (code, message)
 
     def context(self, msg: dict[str, object]) -> Context:
         """Create a context for command execution.
