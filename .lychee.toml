@@ -63,6 +63,9 @@ exclude = [
 
     # Sites that aggressively rate-limit automated requests
     "^https://docs\\.cursor\\.com",
+    "^https://chatgpt\\.com",
+    "^https://claude\\.ai/?$",
+    "^https://platform\\.openai\\.com",
 ]
 
 # Check these file extensions
