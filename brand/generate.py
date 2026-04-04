@@ -44,6 +44,10 @@ HALO_MULTIPLIER = 3
 # Output sizes for PNG export
 ICON_SIZES = [256, 512]
 
+# Social preview dimensions (GitHub recommends 1280x640)
+SOCIAL_WIDTH = 1280
+SOCIAL_HEIGHT = 640
+
 # Margin at 256px scale (pixels)
 MARGIN = 4
 
@@ -1329,6 +1333,37 @@ def compose_icon_svg(
     return ET.tostring(root, encoding="unicode")
 
 
+def compose_social_svg(icon_svg: str) -> str:
+    """Create a 1280x640 social preview SVG with the icon centered.
+
+    Takes the composed icon SVG and re-wraps it in a 2:1 canvas by widening the
+    viewBox horizontally while keeping the icon centered.  The background remains
+    transparent.
+
+    Args:
+        icon_svg: Complete icon SVG document string (square viewBox).
+
+    Returns:
+        SVG document string sized for GitHub social preview (1280x640).
+    """
+    ET.register_namespace("", SVG_NS)
+    root = ET.fromstring(icon_svg)
+
+    viewbox = root.get("viewBox", "").split()
+    vx, vy, vw, vh = (float(v) for v in viewbox)
+
+    # Icon viewBox is square (vw == vh).  For a 2:1 social preview,
+    # double the width and center the icon horizontally.
+    social_vw = vw * (SOCIAL_WIDTH / SOCIAL_HEIGHT)
+    social_vx = vx - (social_vw - vw) / 2
+
+    root.set("viewBox", f"{social_vx} {vy} {social_vw} {vh}")
+    root.set("width", str(SOCIAL_WIDTH))
+    root.set("height", str(SOCIAL_HEIGHT))
+
+    return ET.tostring(root, encoding="unicode")
+
+
 def export_png(svg_path: Path, output_path: Path, size: int) -> None:
     """Export SVG to PNG at specified size.
 
@@ -1413,6 +1448,20 @@ def main() -> None:
         png_path = OUTPUT_DIR / png_name
         export_png(icon_svg_path, png_path, size)
         print(f"  Wrote: {png_path}")  # noqa: T201
+
+    # Export social preview (1280x640 PNG for GitHub)
+    import cairosvg
+
+    print("  Generating social preview...")  # noqa: T201
+    social_svg = compose_social_svg(icon_svg)
+    social_png_path = BRAND_DIR / "social-preview.png"
+    cairosvg.svg2png(
+        bytestring=social_svg.encode(),
+        write_to=str(social_png_path),
+        output_width=SOCIAL_WIDTH,
+        output_height=SOCIAL_HEIGHT,
+    )
+    print(f"  Wrote: {social_png_path}")  # noqa: T201
 
     print("Done!")  # noqa: T201
 
