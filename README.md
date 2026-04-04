@@ -3,102 +3,134 @@
 [![HACS: Custom](https://img.shields.io/badge/HACS-Custom-orange)](https://hacs.xyz/)
 [![HA: 2025.2+](https://img.shields.io/badge/HA-2025.2+-blue)](https://www.home-assistant.io/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
-[![CI](https://github.com/altendky/hamster-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/altendky/hamster-mcp/actions/workflows/ci.yml)
 
-Home Assistant MCP Server — exposes HA's full capabilities via the
-[Model Context Protocol](https://modelcontextprotocol.io/).
+Give AI assistants full access to your Home Assistant instance —
+for debugging, configuration help, and everyday control.
 
-## What Is This?
+## What Can It Do?
 
-Hamster MCP is a Home Assistant custom component that runs an
-[MCP](https://modelcontextprotocol.io/) server inside your HA instance.
-It lets AI assistants and other MCP clients — such as Claude Desktop,
-OpenCode, Cursor, or any tool that speaks the Model Context Protocol — interact
-with your smart home: query states, call services, browse registries,
-debug automations, and more.
+Hamster MCP connects AI assistants — like Claude, ChatGPT, Cursor, and
+others — to your Home Assistant instance. Once connected, you can ask
+your AI assistant to:
 
-Hamster MCP discovers all available services and their schemas automatically
-at runtime — no static tool definitions to maintain.
+- **Find problems** — "Are any of my entities unavailable?" or "Show me
+  devices that are offline"
+- **Help with configuration** — "What automations reference the kitchen
+  motion sensor?" or "List all my scenes and what they do"
+- **Explore your setup** — "What devices are in the living room?" or
+  "Show me all my helpers and their current states"
+- **Dig into system details** — "Show me the Home Assistant logs" or
+  "What add-ons are installed?" (HA OS only)
+- **Control devices** — "Turn on the porch light at 50%" or "Set the
+  thermostat to 72"
 
-The MCP endpoint is served by Home Assistant itself, so it is reachable
-wherever your HA instance is.
-If your HA is only accessible on your local network, MCP clients on
-that network can connect.
-If your HA is exposed externally (via Nabu Casa, a reverse proxy, etc.),
-remote MCP clients such as Claude.ai and ChatGPT can connect as well.
+## How It Works
 
-## Status
+Hamster MCP runs inside your Home Assistant as a custom integration. It
+gives your AI assistant a way to discover everything your HA instance
+can do — all your services, entities, devices, and areas — automatically.
+When you add a new device or automation, the AI can find and use it
+without any extra configuration.
 
-**Beta.** Functional and ready for testing and feedback.
+Behind the scenes, your AI assistant explores what's available in a few
+quick steps before taking action. This means it handles any HA service
+or query without needing hundreds of pre-defined tools, but the first
+interaction in a conversation may take a moment while the AI gets
+oriented.
 
-## Key Features
+## What You Need
 
-- **Dynamic tool generation** from `hass.services.async_services()` — no
-  static tool definitions
-- **Built-in HA authentication** via `HomeAssistantView` — no separate
-  tokens or OAuth setup
-- **Sans-IO protocol core** — fully testable without mocking
-- **Three command groups** covering HA's full surface:
-  - **Services** — all HA service actions (lights, climate, automations,
-    media, notifications, etc.), dynamically discovered at runtime
-  - **Hass** — WebSocket API commands for states, entity/device/area
-    registries, templates, and config management
-  - **Supervisor** — system-level access to logs, host info, add-ons,
-    backups, and networking (available on HA OS / Supervised installs)
-
-## Requirements
-
-- Home Assistant 2025.2 or later
-- Python 3.13 or later
+- **Home Assistant 2025.2 or later**
+- **[HACS](https://hacs.xyz/)** (for the recommended install method)
+- **An AI tool that supports MCP** — see [Connecting Your AI
+  Tool](#connecting-your-ai-tool) for compatible clients and setup
+  links
 
 ## Installation
 
 ### HACS (Recommended)
 
-1. Install [HACS](https://hacs.xyz/) if you haven't already.
-2. Add this repository as a [custom repository](https://hacs.xyz/docs/faq/custom_repositories/) in HACS:
-   - Go to HACS → Integrations → Menu (three dots) → Custom repositories
-   - URL: `https://github.com/altendky/hamster-mcp`
-   - Category: Integration
-3. Search for "Hamster MCP" in HACS and install it.
+1. Open HACS → Integrations → three-dot menu → **Custom repositories**.
+2. Add `https://github.com/altendky/hamster-mcp` with category
+   **Integration**.
+3. Search for **Hamster MCP** in HACS and install it.
 4. Restart Home Assistant.
-5. Add the integration via [Settings → Devices & Services](https://my.home-assistant.io/redirect/integrations/) → Add Integration → Hamster MCP.
+5. Go to
+   [Settings → Devices & Services](https://my.home-assistant.io/redirect/integrations/)
+   → **Add Integration** → **Hamster MCP**.
 
-### Manual Installation
+### Manual
 
-1. Copy the `custom_components/hamster_mcp` directory to your Home Assistant
-   `config/custom_components/` directory.
+1. Copy the `custom_components/hamster_mcp` directory into your Home
+   Assistant `config/custom_components/` directory.
 2. Restart Home Assistant.
-3. Add the integration via [Settings → Devices & Services](https://my.home-assistant.io/redirect/integrations/) → Add Integration → Hamster MCP.
+3. Go to
+   [Settings → Devices & Services](https://my.home-assistant.io/redirect/integrations/)
+   → **Add Integration** → **Hamster MCP**.
 
-## Usage
+## Connecting Your AI Tool
 
-Point your MCP client at your Home Assistant instance with these settings:
+Once the integration is running, point your AI tool at your Home
+Assistant instance:
 
-- **URL:** `https://<your-ha-host>/api/hamster_mcp`
+- **URL:** `https://<your-ha-host>:<port>/api/hamster_mcp`
+  (e.g., `http://homeassistant.local:8123/api/hamster_mcp`)
 - **Transport:** Streamable HTTP
-- **Authentication:** MCP clients that support OAuth (such as OpenCode)
-  will prompt you to log in through Home Assistant automatically.
-  For clients that require a static token, create a
-  [Long-Lived Access Token](https://www.home-assistant.io/docs/authentication/#your-account-profile)
-  in your HA user profile and provide it as a Bearer token.
 
-### Options
+### Network access
 
-The integration works out of the box with no configuration.
-Optional settings are available under the integration's **Configure** button:
+The MCP endpoint is served by Home Assistant itself, so it's reachable
+wherever your HA instance is.
 
-- **Auto-fetch docs on startup** — automatically fetch WebSocket API
-  documentation for richer tool descriptions (default: on)
-- **Docs URL template** — URL for fetching WebSocket API docs; use
-  `{ref}` as placeholder for the git ref
-- **Git ref for docs** — branch, tag, or commit to fetch docs from
-  (default: `master`)
+- **Local AI tools** (Claude Desktop, Cursor, etc.) work as long as
+  they're on the same network as your HA instance.
+- **Cloud AI tools** (Claude.ai, ChatGPT, etc.) need your HA instance
+  to be accessible from the internet — through
+  [Nabu Casa](https://www.nabucasa.com/),
+  a reverse proxy, or similar.
 
-## Documentation
+### Authentication
 
-See [docs/src/project/index.md](docs/src/project/index.md) for architecture,
-principles, and design decisions.
+Some AI tools will prompt you to log in through Home Assistant
+automatically — just follow the login screen when it appears. Others
+need a static token: create a
+[Long-Lived Access Token](https://www.home-assistant.io/docs/authentication/#your-account-profile)
+in your HA profile (under Security) and provide it as a Bearer token in
+your AI tool's configuration. Treat this token like a password — don't
+share it or commit it to version control.
+
+### Compatible clients
+
+These AI tools are known to work with Hamster MCP. Follow the setup
+links for instructions on adding an MCP server in each tool:
+
+| Client | Local / Cloud | Setup guide |
+| --- | --- | --- |
+| [Claude.ai](https://claude.ai) | Cloud | [Custom connectors](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp) |
+| [ChatGPT](https://chatgpt.com) | Cloud | [Developer mode](https://platform.openai.com/docs/guides/developer-mode) |
+| [Claude Desktop](https://claude.ai/download) | Local | [Local servers](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop) / [Remote servers](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp) |
+| [Claude Code](https://claude.com/product/claude-code) | Local | [MCP setup](https://code.claude.com/docs/en/mcp) |
+| [Cursor](https://www.cursor.com/) | Local | [MCP setup](https://docs.cursor.com/context/model-context-protocol) |
+
+Any MCP client that supports Streamable HTTP transport should work.
+See the [full client list](https://modelcontextprotocol.io/clients) on
+the MCP website.
+
+## Try It Out
+
+After connecting, try asking your AI assistant:
+
+- "Are any of my entities unavailable?"
+- "What automations use the front door sensor?"
+- "Turn on the kitchen light to 50% brightness."
+
+If you get a useful answer, everything is working.
+
+## Status
+
+Hamster MCP is in early release — functional and actively developed.
+Feedback and bug reports are welcome via
+[GitHub Issues](https://github.com/altendky/hamster-mcp/issues).
 
 ## License
 

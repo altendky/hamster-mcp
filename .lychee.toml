@@ -60,6 +60,12 @@ exclude = [
     # Example/placeholder hostnames used in documentation
     "^https?://evil\\.com",                    # CORS rejection example
     "^https?://[^/]*homeassistant\\.local",    # Local HA hostname
+
+    # Sites that aggressively rate-limit automated requests
+    "^https://docs\\.cursor\\.com",
+    "^https://chatgpt\\.com",
+    "^https://claude\\.ai/?$",
+    "^https://platform\\.openai\\.com",
 ]
 
 # Check these file extensions
