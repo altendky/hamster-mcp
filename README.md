@@ -96,7 +96,8 @@ automatically — just follow the login screen when it appears. Others
 need a static token: create a
 [Long-Lived Access Token](https://www.home-assistant.io/docs/authentication/#your-account-profile)
 in your HA profile (under Security) and provide it as a Bearer token in
-your AI tool's configuration.
+your AI tool's configuration. Treat this token like a password — don't
+share it or commit it to version control.
 
 ### Compatible clients
 
