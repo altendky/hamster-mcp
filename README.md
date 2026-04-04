@@ -4,8 +4,8 @@
 [![HA: 2025.2+](https://img.shields.io/badge/HA-2025.2+-blue)](https://www.home-assistant.io/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 
-Let AI assistants control, query, and troubleshoot your Home Assistant
-setup.
+Give AI assistants full access to your Home Assistant instance —
+for debugging, configuration help, and everyday control.
 
 ## What Can It Do?
 
@@ -13,16 +13,16 @@ Hamster MCP connects AI assistants — like Claude, ChatGPT, Cursor, and
 others — to your Home Assistant instance. Once connected, you can ask
 your AI assistant to:
 
-- **Check on your home** — "Which lights are on right now?" or "What's
-  the temperature in the bedroom?"
-- **Control devices** — "Turn on the porch light at 50% brightness" or
-  "Set the thermostat to 72"
 - **Find problems** — "Are any of my entities unavailable?" or "Show me
   devices that are offline"
-- **Explore your setup** — "List all automations" or "What devices are
-  in the living room?"
+- **Help with configuration** — "What automations reference the kitchen
+  motion sensor?" or "List all my scenes and what they do"
+- **Explore your setup** — "What devices are in the living room?" or
+  "Show me all my helpers and their current states"
 - **Dig into system details** — "Show me the Home Assistant logs" or
   "What add-ons are installed?" (HA OS only)
+- **Control devices** — "Turn on the porch light at 50%" or "Set the
+  thermostat to 72"
 
 ## How It Works
 
@@ -73,7 +73,8 @@ oriented.
 Once the integration is running, point your AI tool at your Home
 Assistant instance:
 
-- **URL:** `https://<your-ha-host>/api/hamster_mcp`
+- **URL:** `https://<your-ha-host>:<port>/api/hamster_mcp`
+  (e.g., `http://homeassistant.local:8123/api/hamster_mcp`)
 - **Transport:** Streamable HTTP
 
 ### Network access
@@ -118,8 +119,8 @@ the MCP website.
 
 After connecting, try asking your AI assistant:
 
-- "What devices are in my living room?"
 - "Are any of my entities unavailable?"
+- "What automations use the front door sensor?"
 - "Turn on the kitchen light to 50% brightness."
 
 If you get a useful answer, everything is working.
