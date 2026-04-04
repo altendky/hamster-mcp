@@ -27,13 +27,16 @@ def _update_versions(*, version: str, git_ref: str) -> None:
     _MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     pyproject_text = _PYPROJECT_PATH.read_text()
-    pyproject_text = re.sub(
+    pyproject_text, replacements = re.subn(
         r'^version = ".*"$',
         f'version = "{version}"',
         pyproject_text,
         count=1,
         flags=re.MULTILINE,
     )
+    if replacements != 1:
+        msg = "Failed to update version in pyproject.toml — regex matched nothing"
+        raise RuntimeError(msg)
     _PYPROJECT_PATH.write_text(pyproject_text)
 
     subprocess.run(["uv", "lock"], check=True, cwd=_REPO_ROOT)
