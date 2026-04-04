@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release:
+    name: Tag & post-release PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-tags: true
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(jq -r '.version' custom_components/hamster_mcp/manifest.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release commit
+        id: check
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if [[ "$version" == *dev* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Version $version is a dev version — skipping release"
+            exit 0
+          fi
+          if git tag -l "v$version" | grep -q .; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag v$version already exists — skipping"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          git tag "v$version"
+          git push origin "v$version"
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        if: steps.check.outputs.skip != 'true'
+
+      - name: Create post-release PR
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          tag="v$version"
+
+          # Compute next patch dev version
+          IFS='.' read -r major minor patch <<< "$version"
+          next_patch=$((patch + 1))
+          next_dev="${major}.${minor}.${next_patch}.dev0"
+
+          # Configure git identity
+          git config user.name "altendky-release[bot]"
+          git config user.email "${{ vars.RELEASE_APP_ID }}+altendky-release[bot]@users.noreply.github.com"
+
+          # Create post-release branch
+          git checkout -b "post-release/$tag"
+
+          # Reset versions to dev
+          NEXT_DEV="$next_dev" python3 -c '
+          import json, os, re
+          from pathlib import Path
+
+          version = os.environ["NEXT_DEV"]
+
+          mp = Path("custom_components/hamster_mcp/manifest.json")
+          m = json.loads(mp.read_text())
+          m["version"] = version
+          m["requirements"] = ["hamster-mcp@git+https://github.com/altendky/hamster-mcp.git@main"]
+          mp.write_text(json.dumps(m, indent=2) + "\n")
+
+          pp = Path("pyproject.toml")
+          text = pp.read_text()
+          text = re.sub(
+              r"^version = \".*\"$",
+              f"version = \"{version}\"",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          pp.write_text(text)
+          '
+
+          uv lock
+
+          git add custom_components/hamster_mcp/manifest.json pyproject.toml uv.lock
+          git commit -m "Begin $next_dev development"
+          git push -u origin "post-release/$tag"
+
+          gh pr create \
+            --title "Post-release: begin $next_dev development" \
+            --body "Reset version to \`$next_dev\` and requirements to \`@main\` after $tag release." \
+            --label enqueue

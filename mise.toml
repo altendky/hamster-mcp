@@ -16,3 +16,7 @@ UV_PYTHON = { value = "{{ tools.python.path }}", tools = true }
 [tasks.generate-icons]
 description = "Generate brand icons from source SVG"
 run = "python brand/generate.py"
+
+[tasks.release]
+description = "Prepare a release PR"
+run = "python scripts/release.py"
