@@ -74,9 +74,8 @@ def main() -> None:
     tag = f"v{version}"
     branch = f"release/{tag}"
 
-    _update_versions(version=version, git_ref=tag)
-
     subprocess.run(["git", "checkout", "-b", branch], check=True)
+    _update_versions(version=version, git_ref=tag)
     subprocess.run(
         [
             "git",
