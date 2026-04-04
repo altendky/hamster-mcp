@@ -1,13 +1,10 @@
-name: Release
+name: Tag release
 
 on:
-  push:
-    branches: [main]
-
-permissions: {}
+  workflow_call:
 
 jobs:
-  release:
+  tag-release:
     name: Tag & post-release PR
     runs-on: ubuntu-latest
     steps:
