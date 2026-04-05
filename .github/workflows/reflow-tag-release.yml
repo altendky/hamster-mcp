@@ -23,7 +23,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           token: ${{ steps.app-token.outputs.token }}
-          fetch-tags: true
 
       - name: Read version
         id: version
@@ -40,7 +39,7 @@ jobs:
             echo "::notice::Version $version is a dev version — skipping release"
             exit 0
           fi
-          if git tag -l "v$version" | grep -q .; then
+          if git ls-remote --tags origin "refs/tags/v$version" | grep -q .; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Tag v$version already exists — skipping"
             exit 0
