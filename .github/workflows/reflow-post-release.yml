@@ -58,14 +58,6 @@ jobs:
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
           fi
 
-          # Resolve bot identity
-          bot_user_id=$(gh api '/users/altendky-release[bot]' --jq '.id')
-          if [[ -z "$bot_user_id" ]]; then
-            echo "::error::Failed to resolve bot user ID for altendky-release[bot]"
-            exit 1
-          fi
-          bot_email="${bot_user_id}+altendky-release[bot]@users.noreply.github.com"
-
           # Reset versions to dev
           NEXT_DEV="$next_dev" python3 -c '
           import json, os, re
@@ -95,51 +87,54 @@ jobs:
 
           # Get current HEAD
           base_sha=$(git rev-parse HEAD)
-          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_sha" --jq '.tree.sha')
 
-          # Create blobs for modified files
-          # Uses temp file + jq --rawfile to avoid ARG_MAX limits on large files
-          create_blob() {
-            local file="$1"
-            base64 -w0 < "$file" > "$RUNNER_TEMP/blob.b64"
-            jq -n --rawfile content "$RUNNER_TEMP/blob.b64" \
-              '{content: $content, encoding: "base64"}' \
-              | gh api "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha'
-          }
+          # Create branch (pointing at current main HEAD)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/heads/$branch" \
+            -f sha="$base_sha"
 
-          manifest_blob=$(create_blob custom_components/hamster_mcp/manifest.json)
-          pyproject_blob=$(create_blob pyproject.toml)
-          uvlock_blob=$(create_blob uv.lock)
+          # Base64-encode modified files to temp files (avoids ARG_MAX)
+          base64 -w0 < custom_components/hamster_mcp/manifest.json > "$RUNNER_TEMP/manifest.b64"
+          base64 -w0 < pyproject.toml > "$RUNNER_TEMP/pyproject.b64"
+          base64 -w0 < uv.lock > "$RUNNER_TEMP/uvlock.b64"
 
-          # Create tree
-          tree_sha=$(jq -n \
-            --arg base "$base_tree" \
-            --arg m "$manifest_blob" \
-            --arg p "$pyproject_blob" \
-            --arg u "$uvlock_blob" \
-            '{
-              base_tree: $base,
-              tree: [
-                {path: "custom_components/hamster_mcp/manifest.json", mode: "100644", type: "blob", sha: $m},
-                {path: "pyproject.toml", mode: "100644", type: "blob", sha: $p},
-                {path: "uv.lock", mode: "100644", type: "blob", sha: $u}
-              ]
-            }' | gh api "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')
-
-          # Create commit (GitHub signs this via the App installation token)
-          commit_sha=$(jq -n \
+          # Create commit via GraphQL (GitHub signs commits created through this mutation)
+          response=$(jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$branch" \
             --arg msg "Begin $next_dev development" \
-            --arg tree "$tree_sha" \
-            --arg parent "$base_sha" \
-            --arg name "altendky-release[bot]" \
-            --arg email "$bot_email" \
+            --arg head "$base_sha" \
+            --rawfile manifest "$RUNNER_TEMP/manifest.b64" \
+            --rawfile pyproject "$RUNNER_TEMP/pyproject.b64" \
+            --rawfile uvlock "$RUNNER_TEMP/uvlock.b64" \
             '{
-              message: $msg,
-              tree: $tree,
-              parents: [$parent],
-              author: {name: $name, email: $email},
-              committer: {name: $name, email: $email}
-            }' | gh api "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {
+                input: {
+                  branch: {
+                    repositoryNameWithOwner: $repo,
+                    branchName: $branch
+                  },
+                  message: { headline: $msg },
+                  fileChanges: {
+                    additions: [
+                      {path: "custom_components/hamster_mcp/manifest.json", contents: $manifest},
+                      {path: "pyproject.toml", contents: $pyproject},
+                      {path: "uv.lock", contents: $uvlock}
+                    ]
+                  },
+                  expectedHeadOid: $head
+                }
+              }
+            }' | gh api graphql --input -)
+
+          commit_sha=$(echo "$response" | jq -r '.data.createCommitOnBranch.commit.oid // empty')
+
+          if [[ -z "$commit_sha" ]]; then
+            echo "::error::GraphQL createCommitOnBranch failed"
+            echo "$response" | jq '.errors // .data'
+            exit 1
+          fi
 
           # Verify the commit is signed
           verified=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.verification.verified')
@@ -148,11 +143,6 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.verification'
             exit 1
           fi
-
-          # Create branch
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/heads/$branch" \
-            -f sha="$commit_sha"
 
           # Create PR
           gh pr create \
