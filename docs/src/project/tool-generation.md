@@ -4,16 +4,24 @@
 
 Hamster uses a **meta-tool pattern** (modeled after
 [onshape-mcp](https://github.com/altendky/onshape-mcp)) instead of generating
-one MCP tool per HA service.  Four fixed tools let the LLM discover and invoke
-any HA service dynamically (see
-[D017](decisions.md#d017-meta-tool-pattern-over-per-service-tool-generation)).
+one MCP tool per HA service.  Six fixed tools let the LLM discover and invoke
+any HA capability dynamically across all three source groups --- services,
+WebSocket commands, and Supervisor (see
+[D017](decisions.md#d017-meta-tool-pattern-over-per-service-tool-generation)
+and [D024](decisions.md#d024-multi-source-architecture)).
 
 | Tool | Purpose | I/O? |
 | --- | --- | --- |
-| `hamster_services_search` | Find services by keyword/domain | Pure |
-| `hamster_services_explain` | Full field/target/selector details for a service | Pure |
-| `hamster_services_call` | Invoke a service with target + data | `ServiceCall` effect |
-| `hamster_services_schema` | Describe what a selector type expects | Pure |
+| `search` | Find commands by keyword across all groups | Pure |
+| `explain` | Full description/field/selector details for a command | Pure |
+| `call` | Invoke a command (dispatches to services, hass, or supervisor) | Effect |
+| `schema` | Describe what a selector type or command parameter expects | Pure |
+| `list_resources` | List available guidance documents | Pure |
+| `read_resource` | Read a guidance document | Pure |
+
+*Note: Tools were originally named `hamster_services_*` and scoped to
+services only (D012).  They were renamed to generic names when the
+multi-source architecture was introduced (D030).*
 
 ## ServiceIndex
 

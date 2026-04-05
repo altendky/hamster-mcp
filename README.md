@@ -4,39 +4,111 @@
 [![HA: 2025.2+](https://img.shields.io/badge/HA-2025.2+-blue)](https://www.home-assistant.io/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 
-Give AI assistants full access to your Home Assistant instance —
-for debugging, configuration help, and everyday control.
+Full AI debugging and maintenance access to your Home Assistant.
 
 ## What Can It Do?
 
 Hamster MCP connects AI assistants — like Claude, ChatGPT, Cursor, and
-others — to your Home Assistant instance. Once connected, you can ask
-your AI assistant to:
+others — to your Home Assistant instance. It's built for debugging and
+maintenance — the kind of access you need when something isn't working
+or you want to understand what's going on inside your system.
 
-- **Find problems** — "Are any of my entities unavailable?" or "Show me
-  devices that are offline"
-- **Help with configuration** — "What automations reference the kitchen
-  motion sensor?" or "List all my scenes and what they do"
-- **Explore your setup** — "What devices are in the living room?" or
-  "Show me all my helpers and their current states"
-- **Dig into system details** — "Show me the Home Assistant logs" or
-  "What add-ons are installed?" (HA OS only)
-- **Control devices** — "Turn on the porch light at 50%" or "Set the
-  thermostat to 72"
+- **Debug voice assistants** — "Show me the last 5 voice pipeline runs
+  and why speech-to-text failed"
+- **Inspect Matter networks** — "What Matter nodes are in my network
+  and are any unreachable?"
+- **Review system health** — "List all repairs and diagnostics for my
+  system"
+- **Debug automations** — "Show me the trace for the last time the
+  motion automation ran"
+- **Check logs** — "Show me the Supervisor logs from the last hour" or
+  "Are there any errors in the Home Assistant core log?"
+- **Audit entity exposure** — "Which entities are exposed to Alexa
+  but not to Google Assistant?"
+- **Manage Bluetooth** — "What Bluetooth scanners are active and what
+  are their connection stats?"
+
+It also handles everyday tasks — turning on lights, listing automations,
+checking entity states — but that's not its focus.
 
 ## How It Works
 
 Hamster MCP runs inside your Home Assistant as a custom integration. It
-gives your AI assistant a way to discover everything your HA instance
-can do — all your services, entities, devices, and areas — automatically.
-When you add a new device or automation, the AI can find and use it
-without any extra configuration.
+exposes HA's capabilities through three source groups:
 
-Behind the scenes, your AI assistant explores what's available in a few
-quick steps before taking action. This means it handles any HA service
-or query without needing hundreds of pre-defined tools, but the first
-interaction in a conversation may take a moment while the AI gets
-oriented.
+- **Services** — all HA service actions (lights, climate, automations,
+  scripts, etc.), with full field descriptions and selector metadata
+- **WebSocket commands** (~200 commands) — entity/device/area
+  registries, history, system log, config entries, diagnostics, repairs,
+  Matter, Assist Pipeline, voice/conversation, Cloud/Nabu Casa, auth
+  management, trace debugging, HACS, and more
+- **Supervisor** (HA OS only) — Core/Supervisor/host logs, add-on
+  management, backups, host and network info
+
+Your AI assistant discovers what's available through 6 meta-tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `search` | Find commands by keyword across all groups |
+| `explain` | Get a detailed description of a command |
+| `schema` | Get parameter types and selector details |
+| `call` | Execute a command |
+| `list_resources` | List available guidance documents |
+| `read_resource` | Read a guidance document |
+
+When you add a new integration, any WebSocket commands or services it
+registers are available to the AI immediately — no MCP server update
+needed. The tradeoff: the first interaction in a conversation may take a
+moment while the AI explores what's available.
+
+## How It Compares
+
+There are several MCP servers for Home Assistant. Here's how Hamster
+fits in:
+
+**[ha-mcp](https://github.com/homeassistant-ai/ha-mcp)** (2k+ stars)
+is the most popular, with 92 curated tools covering everyday control,
+automation management, dashboards, HACS, and more. Its `ha_call_service`
+tool is fully generic — it can call any HA service, including those from
+custom integrations. For everyday use it's excellent. However, its other
+90 tools only wrap a subset of HA's WebSocket commands. Entire
+subsystems have no coverage:
+
+- Matter (commissioning, node diagnostics, thread/wifi credentials)
+- Assist Pipeline (create/manage/run/debug voice pipelines)
+- Voice/Conversation (agent listing, sentence management, debug scoring)
+- Cloud/Nabu Casa (subscription, remote connect/disconnect, Alexa/Google
+  entity management)
+- Auth management (list/create/delete users, change passwords)
+- Trace debugging (set breakpoints, step through automations)
+- Diagnostics and Repairs
+- Bluetooth scanner management
+- Shopping list, application credentials, webhooks, network config
+- `validate_config`, `fire_event`, `extract_from_target`,
+  `get_triggers_for_target`
+
+**[home-assistant-vibecode-agent](https://github.com/Coolver/home-assistant-vibecode-agent)**
+(500+ stars) is focused on IDE-based development — editing HA
+configuration files, managing HACS packages, creating dashboards from
+Cursor or VS Code. It's a two-part architecture (HA add-on + local MCP
+client) with git-based versioning and rollback.
+
+**[hass-mcp](https://github.com/voska/hass-mcp)** (280+ stars) is
+intentionally lean — REST-only, no WebSocket or Supervisor access, with
+guided prompts for automation creation.
+
+**[hass-mcp-server](https://github.com/ganhammar/hass-mcp-server)**
+(23 stars) is also a custom component like Hamster, but with hardcoded
+tools and OAuth 2.0 support for use with Claude in the browser.
+
+**[mcp-server-home-assistant](https://github.com/allenporter/mcp-server-home-assistant)**
+(archived) is being upstreamed into Home Assistant Core itself — official
+first-party MCP support is coming.
+
+**Hamster's position:** full dynamic access to all ~200 WebSocket
+commands, every service, and the Supervisor, through 6 meta-tools.
+Runs inside HA as a custom component with native auth. Designed for
+debugging and maintenance rather than everyday device control.
 
 ## What You Need
 
@@ -120,9 +192,9 @@ the MCP website.
 
 After connecting, try asking your AI assistant:
 
-- "Are any of my entities unavailable?"
-- "What automations use the front door sensor?"
-- "Turn on the kitchen light to 50% brightness."
+- "Show me the last 5 voice pipeline runs and their results."
+- "Are there any system repairs I should look at?"
+- "What automations use the front door sensor and show me their traces."
 
 If you get a useful answer, everything is working.
 
