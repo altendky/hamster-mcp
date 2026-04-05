@@ -194,7 +194,7 @@ After connecting, try asking your AI assistant:
 
 - "Show me the last 5 voice pipeline runs and their results."
 - "Are there any system repairs I should look at?"
-- "What automations use the front door sensor and show me their traces."
+- "Show me which automations reference the front door sensor and their most recent traces."
 
 If you get a useful answer, everything is working.
 
