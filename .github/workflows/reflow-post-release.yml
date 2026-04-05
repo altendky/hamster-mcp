@@ -99,7 +99,7 @@ jobs:
           base64 -w0 < uv.lock > "$RUNNER_TEMP/uvlock.b64"
 
           # Create commit via GraphQL (GitHub signs commits created through this mutation)
-          commit_sha=$(jq -n \
+          response=$(jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg branch "$branch" \
             --arg msg "Begin $next_dev development" \
@@ -126,10 +126,13 @@ jobs:
                   expectedHeadOid: $head
                 }
               }
-            }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+            }' | gh api graphql --input -)
+
+          commit_sha=$(echo "$response" | jq -r '.data.createCommitOnBranch.commit.oid // empty')
 
           if [[ -z "$commit_sha" ]]; then
             echo "::error::GraphQL createCommitOnBranch failed"
+            echo "$response" | jq '.errors // .data'
             exit 1
           fi
 
