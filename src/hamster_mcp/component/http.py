@@ -88,7 +88,7 @@ class InternalConnection:
         # This ensures the result contains only plain Python types that can be
         # serialized by any JSON library (e.g., the stdlib json module).
         if result is not None:
-            result = orjson.loads(orjson.dumps(result))
+            result = orjson.loads(orjson.dumps(result, option=orjson.OPT_NON_STR_KEYS))
         self.result = result
         self._result_event.set()
 
