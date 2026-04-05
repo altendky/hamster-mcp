@@ -126,6 +126,7 @@ async def test_options_flow_saves_user_input(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == user_input
+    assert entry.options == user_input
 
 
 async def test_options_flow_defaults_from_existing_options(
