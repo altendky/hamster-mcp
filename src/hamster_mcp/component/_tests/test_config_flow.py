@@ -7,9 +7,17 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
+from pytest_homeassistant_custom_component.common import (  # type: ignore[import-untyped]
+    MockConfigEntry,
+)
 
 from hamster_mcp.component.config_flow import HamsterConfigFlow
-from hamster_mcp.component.const import DOMAIN
+from hamster_mcp.component.const import (
+    DEFAULT_AUTO_FETCH_DOCS,
+    DEFAULT_DOCS_GIT_REF,
+    DEFAULT_DOCS_URL_TEMPLATE,
+    DOMAIN,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -78,3 +86,89 @@ async def test_single_config_entry_abort(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "single_instance_allowed"
+
+
+# --- Options flow tests ---
+
+
+async def test_options_flow_shows_form(hass: HomeAssistant) -> None:
+    """Test that the options flow shows a form with expected fields."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Hamster MCP", data={})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    schema_keys = {str(k) for k in data_schema.schema}
+    assert schema_keys == {"auto_fetch_docs", "docs_url_template", "docs_git_ref"}
+
+
+async def test_options_flow_saves_user_input(hass: HomeAssistant) -> None:
+    """Test that submitting the options flow creates an entry with user data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Hamster MCP", data={})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+
+    user_input = {
+        "auto_fetch_docs": False,
+        "docs_url_template": "https://example.com/{ref}/docs.md",
+        "docs_git_ref": "main",
+    }
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input=user_input
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == user_input
+    assert entry.options == user_input
+
+
+async def test_options_flow_defaults_from_existing_options(
+    hass: HomeAssistant,
+) -> None:
+    """Test that form defaults reflect previously saved options."""
+    saved_options = {
+        "auto_fetch_docs": False,
+        "docs_url_template": "https://custom.example.com/{ref}/ws.md",
+        "docs_git_ref": "develop",
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Hamster MCP", data={}, options=saved_options
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    defaults = {str(k): k.default() for k in data_schema.schema}
+    assert defaults == saved_options
+
+
+async def test_options_flow_defaults_without_existing_options(
+    hass: HomeAssistant,
+) -> None:
+    """Test that form defaults use constants when no options are saved."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Hamster MCP", data={})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    defaults = {str(k): k.default() for k in data_schema.schema}
+    assert defaults == {
+        "auto_fetch_docs": DEFAULT_AUTO_FETCH_DOCS,
+        "docs_url_template": DEFAULT_DOCS_URL_TEMPLATE,
+        "docs_git_ref": DEFAULT_DOCS_GIT_REF,
+    }
