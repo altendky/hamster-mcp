@@ -330,7 +330,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create components
     server_info = ServerInfo(name="hamster-mcp", version=_HAMSTER_VERSION)
-    resources = load_all_resources()
+    resources = await hass.async_add_executor_job(load_all_resources)
 
     manager = SessionManager(
         server_info=server_info,
