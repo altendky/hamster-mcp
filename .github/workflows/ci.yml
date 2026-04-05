@@ -41,4 +41,6 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     needs: [checks]
     uses: ./.github/workflows/reflow-publish-release.yml
+    permissions:
+      contents: write
     secrets: inherit
