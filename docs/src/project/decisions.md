@@ -224,6 +224,11 @@ This ensures the index stays current without polling.
 
 ## D017: Meta-Tool Pattern Over Per-Service Tool Generation
 
+*Note: This decision originally defined 4 tools with `hamster_services_*`
+names scoped to services only.  D024 extended the pattern to all three
+source groups, D030 renamed the tools, and `list_resources`/`read_resource`
+were added later, bringing the total to 6.*
+
 **Decision:** Expose 4 fixed MCP tools (`hamster_services_search`,
 `hamster_services_explain`, `hamster_services_call`,
 `hamster_services_schema`) that let the LLM discover and invoke any HA

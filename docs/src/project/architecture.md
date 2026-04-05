@@ -84,7 +84,7 @@ hamster-mcp/
 | `hamster_mcp.mcp._core.jsonrpc` | Core | JSON-RPC 2.0 message parsing and response building |
 | `hamster_mcp.mcp._core.events` | Core | `ReceiveResult` types (`SendResponse`, `RunEffects`) and tool effect/continuation types (`Done`, `ServiceCall`, `FormatServiceResponse`) |
 | `hamster_mcp.mcp._core.session` | Core | `SessionManager` --- HTTP-to-protocol pipeline; validates headers, parses JSON/JSON-RPC, routes by session ID, creates sessions via injected `session_id_factory`, tracks timeouts, builds responses. `MCPServerSession` --- per-session sans-IO state machine. |
-| `hamster_mcp.mcp._core.tools` | Core | 4 fixed meta-tool definitions (`TOOLS`), `ServiceIndex`, `call_tool()`, `resume()`, selector descriptions |
+| `hamster_mcp.mcp._core.tools` | Core | 6 fixed meta-tool definitions (`TOOLS`), `ServiceIndex`, `call_tool()`, `resume()`, selector descriptions |
 | `hamster_mcp.mcp._io.aiohttp` | Integration | `AiohttpMCPTransport` --- thin adapter; extracts headers/body from aiohttp, delegates to `SessionManager`, runs effect dispatch loop. Timeout wakeup loop. `EffectHandler` protocol definition. |
 | `hamster_mcp.component` | Application | HA integration entry point (`async_setup_entry`, `async_unload_entry`) |
 | `hamster_mcp.component.config_flow` | Application | Config flow (setup) + options flow (tristate control) |
@@ -270,11 +270,12 @@ Trade-offs accepted:
 | `ha-mcp` (community) | Standalone/add-on | 95+ | Static | Token |
 | `hass-mcp-server` (ganhammar) | Custom component | 21 | Static | OAuth |
 | `mcp-assist` | Custom component | 11 | Index pattern | IP whitelist |
-| **Hamster MCP** | Custom component | 4 meta-tools | **Dynamic multi-source discovery** | HA built-in |
+| **Hamster MCP** | Custom component | 6 meta-tools | **Dynamic multi-source discovery** | HA built-in |
 
-Hamster MCP's unique position: meta-tool API gateway pattern (search/explain/call/schema)
-giving access to HA services, WebSocket commands, and Supervisor APIs via 4 fixed
-tools.  Built-in HA auth, full admin access.  No existing project uses this approach.
+Hamster MCP's unique position: meta-tool API gateway pattern
+(search/explain/call/schema/list_resources/read_resource) giving access to HA
+services, WebSocket commands, and Supervisor APIs via 6 fixed tools.  Built-in
+HA auth, full admin access.  No existing project uses this approach.
 
 ## Multi-Source Architecture
 

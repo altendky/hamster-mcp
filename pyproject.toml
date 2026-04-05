@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hamster-mcp"
 version = "0.1.1.dev0"
-description = "Home Assistant MCP Server — exposes HA capabilities via the Model Context Protocol"
+description = "Full AI debugging and maintenance access to your Home Assistant via MCP"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 license-files = ["LICENSE*"]
@@ -17,7 +17,7 @@ requires-python = ">=3.13"
 authors = [
     { name = "Kyle Altendorf" },
 ]
-keywords = ["home-assistant", "mcp", "model-context-protocol", "home-automation"]
+keywords = ["home-assistant", "mcp", "model-context-protocol", "home-automation", "debugging", "maintenance"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
