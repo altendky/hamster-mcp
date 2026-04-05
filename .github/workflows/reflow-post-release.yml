@@ -98,20 +98,18 @@ jobs:
           base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_sha" --jq '.tree.sha')
 
           # Create blobs for modified files
-          manifest_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
-            -f content="$(base64 -w0 < custom_components/hamster_mcp/manifest.json)" \
-            -f encoding=base64 \
-            --jq '.sha')
+          # Uses temp file + jq --rawfile to avoid ARG_MAX limits on large files
+          create_blob() {
+            local file="$1"
+            base64 -w0 < "$file" > "$RUNNER_TEMP/blob.b64"
+            jq -n --rawfile content "$RUNNER_TEMP/blob.b64" \
+              '{content: $content, encoding: "base64"}' \
+              | gh api "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha'
+          }
 
-          pyproject_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
-            -f content="$(base64 -w0 < pyproject.toml)" \
-            -f encoding=base64 \
-            --jq '.sha')
-
-          uvlock_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
-            -f content="$(base64 -w0 < uv.lock)" \
-            -f encoding=base64 \
-            --jq '.sha')
+          manifest_blob=$(create_blob custom_components/hamster_mcp/manifest.json)
+          pyproject_blob=$(create_blob pyproject.toml)
+          uvlock_blob=$(create_blob uv.lock)
 
           # Create tree
           tree_sha=$(jq -n \
