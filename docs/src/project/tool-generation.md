@@ -45,8 +45,7 @@ names).  Returns compact summaries of matching services.
 `explain(domain, service)` returns the raw HA service description for a single
 service: name, description, target config, and all fields with their selectors
 as HA defines them.  No translation --- selectors are shown in their native
-format.  The LLM uses `hamster_services_schema` to look up what each selector
-type means.
+format.  The LLM uses `schema` to look up what each selector type means.
 
 ## Selector Descriptions
 
@@ -80,8 +79,8 @@ Examples:
 ## Target Handling
 
 HA services use a `target` concept for specifying which entities, devices,
-areas, floors, or labels to act on.  The `hamster_services_call` tool accepts
-`target` as a separate parameter from `data`
+areas, floors, or labels to act on.  The `call` tool accepts `target` as a
+separate parameter from `data`
 (see [D019](decisions.md#d019-separate-target-and-data-in-service-calls)).
 
 HA accepts 5 target property keys (all optional, each a string or array of
@@ -101,12 +100,12 @@ Resolution hierarchy: `label_id` → entities/devices/areas; `floor_id` → area
 ## Typical LLM Interaction
 
 ```text
-LLM: hamster_services_search(query="light")
-→ light.turn_on — Turn on a light (has target)
-  light.turn_off — Turn off a light (has target)
-  light.toggle — Toggle a light (has target)
+LLM: search(query="light", path_filter="services")
+→ services/light.turn_on — Turn on a light (has target)
+  services/light.turn_off — Turn off a light (has target)
+  services/light.toggle — Toggle a light (has target)
 
-LLM: hamster_services_explain(domain="light", service="turn_on")
+LLM: explain(path="services/light.turn_on")
 → name: Turn on
   description: Turn on a light.
   target: {entity: {domain: light}}
@@ -117,9 +116,11 @@ LLM: hamster_services_explain(domain="light", service="turn_on")
     rgb_color: {selector: {color_rgb: }}
     ...
 
-LLM: hamster_services_call(
-    domain="light", service="turn_on",
-    target={"entity_id": ["light.living_room"]},
-    data={"brightness_pct": 75})
+LLM: call(
+    path="services/light.turn_on",
+    arguments={
+      "target": {"entity_id": ["light.living_room"]},
+      "data": {"brightness_pct": 75}
+    })
 → Success
 ```
