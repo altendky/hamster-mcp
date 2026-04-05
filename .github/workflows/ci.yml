@@ -20,27 +20,28 @@ jobs:
   validate:
     uses: ./.github/workflows/validate.yml
 
-  checks:
-    name: all
-    if: ${{ !cancelled() }}
-    needs: [pre-commit, python, validate]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Decide whether all checks passed
-        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # release/v1
-        with:
-          jobs: ${{ toJSON(needs) }}
-
   tag-release:
     if: github.ref == 'refs/heads/main'
-    needs: [checks]
+    needs: [pre-commit, python, validate]
     uses: ./.github/workflows/reflow-tag-release.yml
     secrets: inherit
 
   publish-release:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    needs: [checks]
+    needs: [pre-commit, python, validate]
     uses: ./.github/workflows/reflow-publish-release.yml
     permissions:
       contents: write
     secrets: inherit
+
+  checks:
+    name: all
+    if: ${{ !cancelled() }}
+    needs: [pre-commit, python, validate, tag-release, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether all checks passed
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # release/v1
+        with:
+          allowed-skips: tag-release, publish-release
+          jobs: ${{ toJSON(needs) }}
