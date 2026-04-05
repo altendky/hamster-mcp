@@ -2,11 +2,17 @@ name: Tag release
 
 on:
   workflow_call:
+    outputs:
+      tagged:
+        description: Whether a new tag was created
+        value: ${{ jobs.tag-release.outputs.tagged }}
 
 jobs:
   tag-release:
-    name: Tag & post-release PR
+    name: Tag release
     runs-on: ubuntu-latest
+    outputs:
+      tagged: ${{ steps.check.outputs.skip != 'true' }}
     steps:
       - uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3
         id: app-token
@@ -47,62 +53,3 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           git tag "v$version"
           git push origin "v$version"
-
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
-        if: steps.check.outputs.skip != 'true'
-
-      - name: Create post-release PR
-        if: steps.check.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          version="${{ steps.version.outputs.version }}"
-          tag="v$version"
-
-          # Compute next patch dev version
-          IFS='.' read -r major minor patch <<< "$version"
-          next_patch=$((patch + 1))
-          next_dev="${major}.${minor}.${next_patch}.dev0"
-
-          # Configure git identity
-          git config user.name "altendky-release[bot]"
-          git config user.email "${{ vars.RELEASE_APP_ID }}+altendky-release[bot]@users.noreply.github.com"
-
-          # Create post-release branch
-          git checkout -b "post-release/$tag"
-
-          # Reset versions to dev
-          NEXT_DEV="$next_dev" python3 -c '
-          import json, os, re
-          from pathlib import Path
-
-          version = os.environ["NEXT_DEV"]
-
-          mp = Path("custom_components/hamster_mcp/manifest.json")
-          m = json.loads(mp.read_text())
-          m["version"] = version
-          m["requirements"] = ["hamster-mcp@git+https://github.com/altendky/hamster-mcp.git@main"]
-          mp.write_text(json.dumps(m, indent=2) + "\n")
-
-          pp = Path("pyproject.toml")
-          text = pp.read_text()
-          text = re.sub(
-              r"^version = \".*\"$",
-              f"version = \"{version}\"",
-              text,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          pp.write_text(text)
-          '
-
-          uv lock
-
-          git add custom_components/hamster_mcp/manifest.json pyproject.toml uv.lock
-          git commit -m "Begin $next_dev development"
-          git push -u origin "post-release/$tag"
-
-          gh pr create \
-            --title "Post-release: begin $next_dev development" \
-            --body "Reset version to \`$next_dev\` and requirements to \`@main\` after $tag release." \
-            --label enqueue

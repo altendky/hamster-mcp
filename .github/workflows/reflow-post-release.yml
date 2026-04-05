@@ -1,0 +1,164 @@
+name: Post-release PR
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  post-release:
+    name: Post-release PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(jq -r '.version' custom_components/hamster_mcp/manifest.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check if post-release needed
+        id: check
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if [[ "$version" == *dev* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Version $version is a dev version — skipping post-release"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create post-release PR
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          tag="v$version"
+          branch="post-release/$tag"
+
+          # Compute next patch dev version
+          IFS='.' read -r major minor patch <<< "$version"
+          next_patch=$((patch + 1))
+          next_dev="${major}.${minor}.${next_patch}.dev0"
+
+          # Delete existing post-release branch if present (auto-closes any open PR)
+          if gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" &>/dev/null; then
+            echo "::notice::Deleting existing branch $branch"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          fi
+
+          # Resolve bot identity
+          bot_user_id=$(gh api '/users/altendky-release[bot]' --jq '.id')
+          if [[ -z "$bot_user_id" ]]; then
+            echo "::error::Failed to resolve bot user ID for altendky-release[bot]"
+            exit 1
+          fi
+          bot_email="${bot_user_id}+altendky-release[bot]@users.noreply.github.com"
+
+          # Reset versions to dev
+          NEXT_DEV="$next_dev" python3 -c '
+          import json, os, re
+          from pathlib import Path
+
+          version = os.environ["NEXT_DEV"]
+
+          mp = Path("custom_components/hamster_mcp/manifest.json")
+          m = json.loads(mp.read_text())
+          m["version"] = version
+          m["requirements"] = ["hamster-mcp@git+https://github.com/altendky/hamster-mcp.git@main"]
+          mp.write_text(json.dumps(m, indent=2) + "\n")
+
+          pp = Path("pyproject.toml")
+          text = pp.read_text()
+          text = re.sub(
+              r"^version = \".*\"$",
+              f"version = \"{version}\"",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          pp.write_text(text)
+          '
+
+          uv lock
+
+          # Get current HEAD
+          base_sha=$(git rev-parse HEAD)
+          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_sha" --jq '.tree.sha')
+
+          # Create blobs for modified files
+          manifest_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
+            -f content="$(base64 -w0 < custom_components/hamster_mcp/manifest.json)" \
+            -f encoding=base64 \
+            --jq '.sha')
+
+          pyproject_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
+            -f content="$(base64 -w0 < pyproject.toml)" \
+            -f encoding=base64 \
+            --jq '.sha')
+
+          uvlock_blob=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" \
+            -f content="$(base64 -w0 < uv.lock)" \
+            -f encoding=base64 \
+            --jq '.sha')
+
+          # Create tree
+          tree_sha=$(jq -n \
+            --arg base "$base_tree" \
+            --arg m "$manifest_blob" \
+            --arg p "$pyproject_blob" \
+            --arg u "$uvlock_blob" \
+            '{
+              base_tree: $base,
+              tree: [
+                {path: "custom_components/hamster_mcp/manifest.json", mode: "100644", type: "blob", sha: $m},
+                {path: "pyproject.toml", mode: "100644", type: "blob", sha: $p},
+                {path: "uv.lock", mode: "100644", type: "blob", sha: $u}
+              ]
+            }' | gh api "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')
+
+          # Create commit (GitHub signs this via the App installation token)
+          commit_sha=$(jq -n \
+            --arg msg "Begin $next_dev development" \
+            --arg tree "$tree_sha" \
+            --arg parent "$base_sha" \
+            --arg name "altendky-release[bot]" \
+            --arg email "$bot_email" \
+            '{
+              message: $msg,
+              tree: $tree,
+              parents: [$parent],
+              author: {name: $name, email: $email},
+              committer: {name: $name, email: $email}
+            }' | gh api "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+
+          # Verify the commit is signed
+          verified=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.verification.verified')
+          if [[ "$verified" != "true" ]]; then
+            echo "::error::Commit $commit_sha is not verified — aborting"
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.verification'
+            exit 1
+          fi
+
+          # Create branch
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/heads/$branch" \
+            -f sha="$commit_sha"
+
+          # Create PR
+          gh pr create \
+            --head "$branch" \
+            --title "Post-release: begin $next_dev development" \
+            --body "Reset version to \`$next_dev\` and requirements to \`@main\` after $tag release." \
+            --label enqueue
