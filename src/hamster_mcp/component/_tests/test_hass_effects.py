@@ -150,6 +150,17 @@ class TestInternalConnectionSendResult:
             }
         }
 
+    def test_send_result_handles_non_string_keys(self) -> None:
+        """send_result handles dicts with non-string keys (e.g. script/config)."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.send_result(1, {1: "value", "normal": "data"})
+
+        assert conn.result == {"1": "value", "normal": "data"}
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
 
 class TestInternalConnectionSendError:
     """Tests for InternalConnection.send_error()."""
