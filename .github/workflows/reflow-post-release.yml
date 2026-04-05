@@ -60,6 +60,10 @@ jobs:
 
           # Resolve bot identity
           bot_user_id=$(gh api '/users/altendky-release[bot]' --jq '.id')
+          if [[ -z "$bot_user_id" ]]; then
+            echo "::error::Failed to resolve bot user ID for altendky-release[bot]"
+            exit 1
+          fi
           bot_email="${bot_user_id}+altendky-release[bot]@users.noreply.github.com"
 
           # Reset versions to dev
