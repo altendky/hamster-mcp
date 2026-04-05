@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hamster-mcp"
-version = "0.1.1.dev0"
+version = "0.1.1"
 description = "Full AI debugging and maintenance access to your Home Assistant via MCP"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
