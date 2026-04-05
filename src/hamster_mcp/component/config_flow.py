@@ -13,7 +13,6 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
-    OptionsFlowWithConfigEntry,
 )
 import voluptuous as vol
 
@@ -52,17 +51,17 @@ class HamsterConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow handler."""
-        return HamsterOptionsFlow(config_entry)
+        return HamsterOptionsFlow()
 
 
-class HamsterOptionsFlow(OptionsFlowWithConfigEntry):
+class HamsterOptionsFlow(OptionsFlow):
     """Handle options for Hamster MCP.
 
-    Not a dataclass: Inherits from OptionsFlowWithConfigEntry, a Home Assistant
-    framework base class that defines the options flow contract. Framework
-    subclasses must follow their parent class's initialization and lifecycle
-    patterns. TODO: Investigate whether dataclass inheritance with Home Assistant
-    flow base classes is viable.
+    Not a dataclass: Inherits from OptionsFlow, a Home Assistant framework base
+    class that defines the options flow contract. Framework subclasses must
+    follow their parent class's initialization and lifecycle patterns. TODO:
+    Investigate whether dataclass inheritance with Home Assistant flow base
+    classes is viable.
     """
 
     async def async_step_init(
