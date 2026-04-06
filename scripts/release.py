@@ -52,6 +52,8 @@ def main() -> None:
     if not re.match(r"^\d+\.\d+\.\d+$", version):
         sys.exit(f"Invalid version format: {version!r}. Expected X.Y.Z")
 
+    tag = f"v{version}"
+
     # Safety checks
     branch_result = subprocess.run(
         ["git", "branch", "--show-current"],
@@ -71,7 +73,16 @@ def main() -> None:
     if status_result.stdout.strip():
         sys.exit("Working tree has uncommitted changes")
 
-    tag = f"v{version}"
+    subprocess.run(["git", "pull", "--ff-only"], check=True)
+    subprocess.run(["git", "fetch", "--tags"], check=True)
+
+    tag_check = subprocess.run(
+        ["git", "rev-parse", tag],
+        capture_output=True,
+    )
+    if tag_check.returncode == 0:
+        sys.exit(f"Error: tag {tag} already exists")
+
     branch = f"release/{tag}"
 
     subprocess.run(["git", "checkout", "-b", branch], check=True)
