@@ -50,7 +50,7 @@ jobs:
           # Compute next patch dev version
           IFS='.' read -r major minor patch <<< "$version"
           next_patch=$((patch + 1))
-          next_dev="${major}.${minor}.${next_patch}.dev0"
+          dev_version="${major}.${minor}.${next_patch}.dev0"
 
           # Delete existing post-release branch if present (auto-closes any open PR)
           if gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" &>/dev/null; then
@@ -59,7 +59,7 @@ jobs:
           fi
 
           # Reset versions to dev
-          NEXT_DEV="$next_dev" python3 -c '
+          NEXT_DEV="$dev_version" python3 -c '
           import json, os, re
           from pathlib import Path
 
@@ -102,7 +102,7 @@ jobs:
           response=$(jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg branch "$branch" \
-            --arg msg "Begin $next_dev development" \
+            --arg msg "Start ${dev_version} development" \
             --arg head "$base_sha" \
             --rawfile manifest "$RUNNER_TEMP/manifest.b64" \
             --rawfile pyproject "$RUNNER_TEMP/pyproject.b64" \
@@ -147,6 +147,6 @@ jobs:
           # Create PR
           gh pr create \
             --head "$branch" \
-            --title "Post-release: begin $next_dev development" \
-            --body "Reset version to \`$next_dev\` and requirements to \`@main\` after $tag release." \
+            --title "Post-release: start ${dev_version}" \
+            --body "Reset version to \`${dev_version}\` and requirements to \`@main\` after $tag release." \
             --label enqueue
