@@ -77,8 +77,7 @@ def main() -> None:
     subprocess.run(["git", "fetch", "--tags"], check=True)
 
     tag_check = subprocess.run(
-        ["git", "rev-parse", tag],
-        capture_output=True,
+        ["git", "show-ref", "--verify", "--quiet", f"refs/tags/{tag}"],
     )
     if tag_check.returncode == 0:
         sys.exit(f"Error: tag {tag} already exists")
