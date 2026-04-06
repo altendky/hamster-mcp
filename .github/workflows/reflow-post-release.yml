@@ -93,10 +93,15 @@ jobs:
             -f ref="refs/heads/$branch" \
             -f sha="$base_sha"
 
-          # Base64-encode modified files to temp files (avoids ARG_MAX)
-          base64 -w0 < custom_components/hamster_mcp/manifest.json > "$RUNNER_TEMP/manifest.b64"
-          base64 -w0 < pyproject.toml > "$RUNNER_TEMP/pyproject.b64"
-          base64 -w0 < uv.lock > "$RUNNER_TEMP/uvlock.b64"
+          # Build additions array dynamically from changed files
+          additions="[]"
+          while IFS= read -r file; do
+            base64 -w0 < "$file" > "$RUNNER_TEMP/file.b64"
+            additions=$(jq \
+              --arg path "$file" \
+              --rawfile contents "$RUNNER_TEMP/file.b64" \
+              '. + [{path: $path, contents: $contents}]' <<< "$additions")
+          done < <(git diff --name-only)
 
           # Create commit via GraphQL (GitHub signs commits created through this mutation)
           response=$(jq -n \
@@ -104,9 +109,7 @@ jobs:
             --arg branch "$branch" \
             --arg msg "Begin $next_dev development" \
             --arg head "$base_sha" \
-            --rawfile manifest "$RUNNER_TEMP/manifest.b64" \
-            --rawfile pyproject "$RUNNER_TEMP/pyproject.b64" \
-            --rawfile uvlock "$RUNNER_TEMP/uvlock.b64" \
+            --argjson additions "$additions" \
             '{
               query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
               variables: {
@@ -117,11 +120,7 @@ jobs:
                   },
                   message: { headline: $msg },
                   fileChanges: {
-                    additions: [
-                      {path: "custom_components/hamster_mcp/manifest.json", contents: $manifest},
-                      {path: "pyproject.toml", contents: $pyproject},
-                      {path: "uv.lock", contents: $uvlock}
-                    ]
+                    additions: $additions
                   },
                   expectedHeadOid: $head
                 }
