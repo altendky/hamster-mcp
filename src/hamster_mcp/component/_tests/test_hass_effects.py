@@ -161,6 +161,38 @@ class TestInternalConnectionSendResult:
         assert conn.error is None
         assert conn._result_event.is_set()
 
+    def test_send_result_serializes_context_via_as_dict(self) -> None:
+        """send_result serializes Context objects using as_dict().
+
+        Home Assistant's Context class is not directly JSON-serializable,
+        but has an as_dict() method. The serialization should use this.
+        """
+        from homeassistant.core import Context
+
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        context = Context(user_id="test_user")
+        result_with_context = {
+            "context": context,
+            "other_data": "value",
+        }
+
+        conn.send_result(1, result_with_context)
+
+        # Context should be serialized via as_dict()
+        assert conn.result is not None
+        assert isinstance(conn.result, dict)
+        result: dict[str, object] = conn.result
+        assert result["other_data"] == "value"
+        context_dict = result["context"]
+        assert isinstance(context_dict, dict)
+        assert context_dict["user_id"] == "test_user"
+        assert context_dict["parent_id"] is None
+        assert "id" in context_dict  # Context generates an ID
+        assert conn.error is None
+        assert conn._result_event.is_set()
+
 
 class TestInternalConnectionSendError:
     """Tests for InternalConnection.send_error()."""
