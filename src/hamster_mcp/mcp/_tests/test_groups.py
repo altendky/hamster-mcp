@@ -451,3 +451,55 @@ class TestServicesGroupParseCallArgs:
         result = group.parse_call_args("light", {}, user_id=None)
         assert isinstance(result, Done)
         assert result.result.is_error
+
+    def test_supports_response_true_when_response_key_present(self) -> None:
+        """Service with 'response' key sets supports_response=True."""
+        # Service with response support (like weather.get_forecasts)
+        group = ServicesGroup.create(
+            {
+                "weather": {
+                    "get_forecasts": {
+                        "description": "Get weather forecast",
+                        "response": {"optional": False},  # SupportsResponse.ONLY
+                    }
+                }
+            }
+        )
+        result = group.parse_call_args("weather.get_forecasts", {}, user_id=None)
+        assert isinstance(result, ServiceCall)
+        assert result.supports_response is True
+
+    def test_supports_response_false_when_response_key_absent(self) -> None:
+        """Service without 'response' key sets supports_response=False."""
+        # Service without response support (like remote.send_command)
+        group = ServicesGroup.create(
+            {
+                "remote": {
+                    "send_command": {
+                        "description": "Send command to remote",
+                        "fields": {"command": {"required": True}},
+                        # No "response" key - service doesn't support responses
+                    }
+                }
+            }
+        )
+        result = group.parse_call_args("remote.send_command", {}, user_id=None)
+        assert isinstance(result, ServiceCall)
+        assert result.supports_response is False
+
+    def test_supports_response_optional_true(self) -> None:
+        """parse_call_args() handles SupportsResponse.OPTIONAL services."""
+        # Service with optional response support
+        group = ServicesGroup.create(
+            {
+                "calendar": {
+                    "get_events": {
+                        "description": "Get calendar events",
+                        "response": {"optional": True},  # SupportsResponse.OPTIONAL
+                    }
+                }
+            }
+        )
+        result = group.parse_call_args("calendar.get_events", {}, user_id=None)
+        assert isinstance(result, ServiceCall)
+        assert result.supports_response is True
