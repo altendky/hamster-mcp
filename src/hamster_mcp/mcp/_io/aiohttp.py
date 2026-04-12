@@ -29,6 +29,7 @@ from hamster_mcp.mcp._core.events import (
     ServiceCall,
     SupervisorCall,
 )
+from hamster_mcp.mcp._core.registry_enrichment import RegistryContext  # noqa: TC001
 from hamster_mcp.mcp._core.tools import resume
 from hamster_mcp.mcp._core.types import (
     CallToolResult,
@@ -116,6 +117,18 @@ class EffectHandler(Protocol):
 
         Returns:
             SupervisorCallResult indicating success or failure
+        """
+        ...
+
+    async def fetch_registry_context(self) -> RegistryContext:
+        """Fetch registry data for enriching command outputs.
+
+        Retrieves entity, device, area, floor, and label registry data
+        from Home Assistant for use in enriching JSON outputs with
+        human-readable names.
+
+        Returns:
+            RegistryContext containing all registry data for lookups
         """
         ...
 
@@ -233,6 +246,11 @@ class AiohttpMCPTransport:
             Final CallToolResult
         """
         current = effect
+        # Fetch registry context once for the entire effect loop
+        # This context is used to enrich outputs with human-readable names
+        registry_context: RegistryContext | None = None
+        registry_context_fetched = False
+
         while True:
             if isinstance(current, Done):
                 return current.result
@@ -256,7 +274,11 @@ class AiohttpMCPTransport:
                         success=False,
                         error=f"Unexpected error: {type(err).__name__}: {err}",
                     )
-                current = resume(current.continuation, io_result)
+                # Fetch registry context if needed and not yet fetched
+                if current.continuation.enrich and not registry_context_fetched:
+                    registry_context = await self._fetch_registry_context_safe()
+                    registry_context_fetched = True
+                current = resume(current.continuation, io_result, registry_context)
             elif isinstance(current, HassCommand):
                 try:
                     hass_result = await self.effect_handler.execute_hass_command(
@@ -273,7 +295,11 @@ class AiohttpMCPTransport:
                         success=False,
                         error=f"Unexpected error: {type(err).__name__}: {err}",
                     )
-                current = resume(current.continuation, hass_result)
+                # Fetch registry context if needed and not yet fetched
+                if current.continuation.enrich and not registry_context_fetched:
+                    registry_context = await self._fetch_registry_context_safe()
+                    registry_context_fetched = True
+                current = resume(current.continuation, hass_result, registry_context)
             elif isinstance(current, SupervisorCall):
                 try:
                     supervisor_result = (
@@ -294,7 +320,25 @@ class AiohttpMCPTransport:
                         success=False,
                         error=f"Unexpected error: {type(err).__name__}: {err}",
                     )
-                current = resume(current.continuation, supervisor_result)
+                # Fetch registry context if needed and not yet fetched
+                if current.continuation.enrich and not registry_context_fetched:
+                    registry_context = await self._fetch_registry_context_safe()
+                    registry_context_fetched = True
+                current = resume(
+                    current.continuation, supervisor_result, registry_context
+                )
+
+    async def _fetch_registry_context_safe(self) -> RegistryContext | None:
+        """Fetch registry context, returning None on any error.
+
+        Errors during registry fetch should not fail the tool call -
+        enrichment is a nice-to-have, not a requirement.
+        """
+        try:
+            return await self.effect_handler.fetch_registry_context()
+        except Exception:
+            _LOGGER.warning("Failed to fetch registry context for enrichment")
+            return None
 
     def shutdown(self) -> None:
         """Shutdown the transport.

@@ -18,6 +18,7 @@ from .events import (
     FormatSupervisorResponse,
     ToolEffect,
 )
+from .registry_enrichment import RegistryContext, enrich_data
 from .resources import ResourceEntry
 from .resources import read_resource as _read_resource
 from .types import (
@@ -334,36 +335,46 @@ def _call_schema(arguments: dict[str, object], registry: GroupRegistry) -> ToolE
 def resume(
     continuation: Continuation,
     io_result: ServiceCallResult | HassCommandResult | SupervisorCallResult,
+    registry_context: RegistryContext | None = None,
 ) -> ToolEffect:
     """Resume tool execution after I/O completes.
 
     Args:
         continuation: The continuation from ServiceCall, HassCommand, or SupervisorCall
         io_result: Result of the I/O operation
+        registry_context: Optional registry data for enrichment. If None or
+            continuation.enrich is False, no enrichment is applied.
 
     Returns:
         Next ToolEffect (usually Done)
     """
+    # Determine effective context based on continuation's enrich flag
+    context = (
+        registry_context
+        if registry_context is not None and continuation.enrich
+        else RegistryContext.empty()
+    )
+
     if isinstance(continuation, FormatServiceResponse):
         if not isinstance(io_result, ServiceCallResult):
             return _make_error(
                 "Invalid IO result type for FormatServiceResponse"
             )  # pragma: no cover
-        return _format_service_response(io_result)
+        return _format_service_response(io_result, context)
 
     if isinstance(continuation, FormatHassResponse):
         if not isinstance(io_result, HassCommandResult):
             return _make_error(
                 "Invalid IO result type for FormatHassResponse"
             )  # pragma: no cover
-        return _format_hass_response(io_result)
+        return _format_hass_response(io_result, context)
 
     if isinstance(continuation, FormatSupervisorResponse):
         if not isinstance(io_result, SupervisorCallResult):
             return _make_error(
                 "Invalid IO result type for FormatSupervisorResponse"
             )  # pragma: no cover
-        return _format_supervisor_response(io_result)
+        return _format_supervisor_response(io_result, context)
 
     # Should not happen with proper typing, but handle gracefully
     return _make_error(
@@ -371,7 +382,10 @@ def resume(
     )  # pragma: no cover
 
 
-def _format_service_response(io_result: ServiceCallResult) -> Done:
+def _format_service_response(
+    io_result: ServiceCallResult,
+    context: RegistryContext,
+) -> Done:
     """Format a service call result into MCP content."""
     if not io_result.success:
         return Done(
@@ -382,14 +396,18 @@ def _format_service_response(io_result: ServiceCallResult) -> Done:
         )
 
     if io_result.data:
-        text = json.dumps(io_result.data, indent=2, default=str)
+        enriched = enrich_data(io_result.data, context)
+        text = json.dumps(enriched, indent=2, default=str)
     else:
         text = "Service call completed successfully."
 
     return Done(result=CallToolResult(content=(TextContent(text=text),)))
 
 
-def _format_hass_response(io_result: HassCommandResult) -> Done:
+def _format_hass_response(
+    io_result: HassCommandResult,
+    context: RegistryContext,
+) -> Done:
     """Format a WebSocket command result into MCP content."""
     if not io_result.success:
         return Done(
@@ -400,14 +418,18 @@ def _format_hass_response(io_result: HassCommandResult) -> Done:
         )
 
     if io_result.data is not None:
-        text = json.dumps(io_result.data, indent=2, default=str)
+        enriched = enrich_data(io_result.data, context)
+        text = json.dumps(enriched, indent=2, default=str)
     else:
         text = "Command completed successfully."
 
     return Done(result=CallToolResult(content=(TextContent(text=text),)))
 
 
-def _format_supervisor_response(io_result: SupervisorCallResult) -> Done:
+def _format_supervisor_response(
+    io_result: SupervisorCallResult,
+    context: RegistryContext,
+) -> Done:
     """Format a Supervisor API result into MCP content."""
     if not io_result.success:
         return Done(
@@ -422,7 +444,8 @@ def _format_supervisor_response(io_result: SupervisorCallResult) -> Done:
         if isinstance(io_result.data, str):
             text = io_result.data
         else:
-            text = json.dumps(io_result.data, indent=2, default=str)
+            enriched = enrich_data(io_result.data, context)
+            text = json.dumps(enriched, indent=2, default=str)
     else:
         text = "Supervisor call completed successfully."
 

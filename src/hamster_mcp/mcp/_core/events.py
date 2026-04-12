@@ -22,7 +22,12 @@ class FormatServiceResponse:
     """Format the raw HA service response into MCP content.
 
     Continuation type for service call results.
+
+    Attributes:
+        enrich: Whether to apply registry enrichment to the response.
     """
+
+    enrich: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +35,12 @@ class FormatHassResponse:
     """Format the raw WebSocket command response into MCP content.
 
     Continuation type for hass command results.
+
+    Attributes:
+        enrich: Whether to apply registry enrichment to the response.
     """
+
+    enrich: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +48,12 @@ class FormatSupervisorResponse:
     """Format the raw Supervisor API response into MCP content.
 
     Continuation type for supervisor call results.
+
+    Attributes:
+        enrich: Whether to apply registry enrichment to the response.
     """
+
+    enrich: bool = True
 
 
 # Continuation union - grows as new continuation types are added
