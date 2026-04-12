@@ -15,6 +15,7 @@ This module provides:
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 
@@ -339,5 +340,6 @@ def get_target_schema() -> dict[str, Any]:
     """Get the JSON Schema for the target specification.
 
     This is the discriminated union for service targeting.
+    Returns a deep copy to prevent mutation of the module-level constant.
     """
-    return SELECTOR_SCHEMAS["target"]
+    return copy.deepcopy(SELECTOR_SCHEMAS["target"])
