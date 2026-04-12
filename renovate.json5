@@ -25,6 +25,13 @@
         "fileFilters": ["mise.lock"],
         "executionMode": "update"
       }
+    },
+    // Group lychee updates across mise and pre-commit to keep versions in sync.
+    // The lychee pre-commit hook uses the mise-provided binary when available,
+    // so mismatched versions would cause silent version drift.
+    {
+      "groupName": "lychee",
+      "matchPackageNames": ["cargo:lychee", "lycheeverse/lychee"]
     }
   ]
 }
