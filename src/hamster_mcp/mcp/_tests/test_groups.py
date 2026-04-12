@@ -310,6 +310,41 @@ class TestServicesGroupExplain:
         group = ServicesGroup.create({"light": {"turn_on": {"description": "Turn on"}}})
         assert group.explain("light") is None
 
+    def test_explain_includes_schema_references(self) -> None:
+        """explain() includes schema references for selectors used."""
+        group = ServicesGroup.create(
+            {
+                "light": {
+                    "turn_on": {
+                        "description": "Turn on the light",
+                        "target": {"entity": {"domain": "light"}},
+                        "fields": {
+                            "brightness": {
+                                "selector": {"number": {}},
+                                "description": "Brightness level",
+                            },
+                            "transition": {
+                                "selector": {"number": {}},
+                            },
+                            "effect": {
+                                "selector": {"text": {}},
+                            },
+                        },
+                    }
+                }
+            }
+        )
+        result = group.explain("light.turn_on")
+        assert result is not None
+        # Check for schema references section
+        assert "Schema References" in result
+        assert 'schema("light.turn_on")' in result
+        # Check for selector type references
+        assert 'schema("selector/number")' in result
+        assert 'schema("selector/text")' in result
+        # Check for target schema hint
+        assert 'schema("selector/target")' in result
+
 
 class TestServicesGroupSchema:
     """Tests for ServicesGroup.schema()."""
@@ -355,6 +390,64 @@ class TestServicesGroupSchema:
         result = group.schema("selector/unknown_type")
         assert result is not None
         assert "Unknown selector type" in result
+
+    def test_schema_selector_list(self) -> None:
+        """schema("selector") returns list of all selector types."""
+        group = ServicesGroup.create({})
+        result = group.schema("selector")
+        assert result is not None
+        assert "x-selector-types" in result
+        assert "duration" in result
+        assert "entity" in result
+        assert "target" in result
+
+    def test_schema_selector_json_block(self) -> None:
+        """schema() returns JSON Schema in code block."""
+        group = ServicesGroup.create({})
+        result = group.schema("selector/duration")
+        assert result is not None
+        assert "```json" in result
+        assert '"x-selector-type": "duration"' in result
+        assert '"type": "object"' in result
+
+    def test_schema_target_has_target_keys(self) -> None:
+        """schema("selector/target") includes x-target-keys annotation."""
+        group = ServicesGroup.create({})
+        result = group.schema("selector/target")
+        assert result is not None
+        assert "x-target-keys" in result
+        assert "entity_id" in result
+        assert "device_id" in result
+        assert "area_id" in result
+
+    def test_schema_service_returns_json_schema(self) -> None:
+        """schema() with service path returns JSON Schema for fields."""
+        group = ServicesGroup.create(
+            {
+                "light": {
+                    "turn_on": {
+                        "fields": {
+                            "brightness": {
+                                "required": True,
+                                "selector": {"number": {}},
+                                "description": "Brightness level",
+                            },
+                            "transition": {
+                                "selector": {"number": {}},
+                                "description": "Transition time",
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        result = group.schema("light.turn_on")
+        assert result is not None
+        assert "```json" in result
+        assert '"type": "object"' in result
+        assert '"properties"' in result
+        assert '"brightness"' in result
+        assert '"required"' in result
 
 
 class TestServicesGroupHasCommand:

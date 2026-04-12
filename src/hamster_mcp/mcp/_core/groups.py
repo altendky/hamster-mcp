@@ -7,9 +7,15 @@ command sources (services, hass, supervisor).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .events import Done, FormatServiceResponse, ServiceCall, ToolEffect
+from .selector_schemas import (
+    SELECTOR_TYPES,
+    get_selector_list_schema,
+    get_selector_schema,
+)
 from .types import CallToolResult, TextContent
 
 if TYPE_CHECKING:
@@ -298,6 +304,7 @@ class ServicesGroup:
 
         Returns:
             Formatted text with full service details, or None if not found.
+            Includes references to relevant JSON Schemas for type exploration.
         """
         if "." not in path:
             return None
@@ -325,6 +332,7 @@ class ServicesGroup:
         if target:
             lines.append("")
             lines.append("### Target")
+            lines.append('*(use `schema("selector/target")` for full JSON Schema)*')
             if isinstance(target, dict):
                 if entity := target.get("entity"):
                     lines.append(f"- Entity: {entity}")
@@ -337,10 +345,24 @@ class ServicesGroup:
 
         # Fields
         fields = service_data.get("fields")
+        selector_types_used: set[str] = set()
         if isinstance(fields, dict) and fields:
             lines.append("")
             lines.append("### Fields")
-            self._format_fields(fields, lines)
+            self._format_fields(fields, lines, selector_types_used=selector_types_used)
+
+        # Schema references section
+        if selector_types_used or target:
+            lines.append("")
+            lines.append("### Schema References")
+            lines.append(
+                f'Use `schema("{domain}.{service}")` '
+                "for full JSON Schema of parameters."
+            )
+            if selector_types_used:
+                sorted_types = sorted(selector_types_used)
+                refs = ", ".join(f'`schema("selector/{t}")`' for t in sorted_types)
+                lines.append(f"Selector types used: {refs}")
 
         return "\n".join(lines)
 
@@ -349,8 +371,17 @@ class ServicesGroup:
         fields: dict[str, object],
         lines: list[str],
         indent: str = "",
+        *,
+        selector_types_used: set[str] | None = None,
     ) -> None:
-        """Format field definitions recursively."""
+        """Format field definitions recursively.
+
+        Args:
+            fields: Field definitions dict
+            lines: Output lines to append to
+            indent: Current indentation string
+            selector_types_used: Set to collect selector types encountered
+        """
         for field_name, field_data in fields.items():
             if not isinstance(field_data, dict):
                 continue
@@ -361,7 +392,12 @@ class ServicesGroup:
                 lines.append(f"{indent}- **{section_name}** (section)")
                 nested_fields = field_data.get("fields")
                 if isinstance(nested_fields, dict):
-                    self._format_fields(nested_fields, lines, indent + "  ")
+                    self._format_fields(
+                        nested_fields,
+                        lines,
+                        indent + "  ",
+                        selector_types_used=selector_types_used,
+                    )
                 continue
 
             # Regular field
@@ -374,7 +410,10 @@ class ServicesGroup:
             if isinstance(selector, dict) and selector:
                 selector_types = list(selector.keys())
                 if selector_types:
-                    selector_info = f" [{selector_types[0]}]"
+                    selector_type = selector_types[0]
+                    selector_info = f" [{selector_type}]"
+                    if selector_types_used is not None:
+                        selector_types_used.add(selector_type)
 
             base = f"{indent}- **{field_name}**{req_marker}{selector_info}"
             if isinstance(field_desc, str) and field_desc:
@@ -385,13 +424,21 @@ class ServicesGroup:
     def schema(self, path: str) -> str | None:
         """Get schema/type info for a service or selector.
 
-        For selectors, use path like "selector/duration".
-        For services, use path like "light.turn_on" to get field schema.
+        Returns a hybrid JSON Schema + Markdown response:
+        - JSON Schema in a code block for machine parsing
+        - Markdown description for human readability
+
+        Path formats:
+        - "selector" - List all selector types (x-selector-types annotation)
+        - "selector/<type>" - Get JSON Schema for a specific selector
+        - "domain.service" - Get JSON Schema for service parameters
         """
-        # Check for selector path
+        # Handle selector paths
+        if path == "selector":
+            return self._format_selector_list_schema()
         if path.startswith("selector/"):
             selector_type = path[9:]  # Remove "selector/" prefix
-            return self._describe_selector(selector_type)
+            return self._format_selector_schema(selector_type)
 
         # Service field schema
         if "." not in path:
@@ -406,101 +453,172 @@ class ServicesGroup:
         if not isinstance(service_data, dict):
             return None
 
-        # Format field schema
+        return self._format_service_schema(domain, service, service_data)
+
+    def _format_selector_list_schema(self) -> str:
+        """Format the selector type list with x-selector-types annotation."""
+        schema = get_selector_list_schema()
+        json_block = json.dumps(schema, indent=2)
+
+        types_per_line = 8
+        type_lines = []
+        for i in range(0, len(SELECTOR_TYPES), types_per_line):
+            chunk = SELECTOR_TYPES[i : i + types_per_line]
+            type_lines.append(", ".join(chunk))
+
+        markdown = f"""## Available Selector Types
+
+{len(SELECTOR_TYPES)} selector types available:
+
+{chr(10).join(f"- {line}" for line in type_lines)}
+
+Use `schema("selector/<type>")` to get the JSON Schema for a specific type."""
+
+        return f"```json\n{json_block}\n```\n\n{markdown}"
+
+    def _format_selector_schema(self, selector_type: str) -> str:
+        """Format a single selector type's JSON Schema."""
+        schema = get_selector_schema(selector_type)
+
+        if schema is None:
+            return (
+                f"Unknown selector type: {selector_type}\n\n"
+                f'Use `schema("selector")` to see all {len(SELECTOR_TYPES)} '
+                "available selector types."
+            )
+
+        json_block = json.dumps(schema, indent=2)
+        description = schema.get("description", "")
+
+        # Build markdown explanation
+        markdown_parts = [f"## {selector_type} selector", ""]
+        if description:
+            markdown_parts.append(description)
+            markdown_parts.append("")
+
+        # Add type-specific notes
+        schema_type = schema.get("type", "any")
+        if schema_type == "object" and "properties" in schema:
+            props = schema["properties"]
+            required = schema.get("required", [])
+            markdown_parts.append("**Properties:**")
+            for prop_name, prop_schema in props.items():
+                req_marker = " (required)" if prop_name in required else ""
+                prop_desc = prop_schema.get("description", "")
+                if isinstance(prop_schema, dict) and "oneOf" in prop_schema:
+                    prop_desc = prop_schema.get("description", "string or array")
+                markdown_parts.append(f"- `{prop_name}`{req_marker}: {prop_desc}")
+            markdown_parts.append("")
+
+        # Add x-target-keys note for target selector
+        if "x-target-keys" in schema:
+            target_keys = schema["x-target-keys"]
+            markdown_parts.append(
+                f"**Target keys:** {', '.join(f'`{k}`' for k in target_keys)}"
+            )
+            markdown_parts.append("")
+
+        # Add examples if present
+        if "examples" in schema:
+            examples = schema["examples"]
+            markdown_parts.append("**Examples:**")
+            for ex in examples:
+                if isinstance(ex, str):
+                    markdown_parts.append(f"- `{ex}`")
+                else:
+                    markdown_parts.append(f"- `{json.dumps(ex)}`")
+
+        return f"```json\n{json_block}\n```\n\n" + "\n".join(markdown_parts)
+
+    def _format_service_schema(
+        self, domain: str, service: str, service_data: dict[str, object]
+    ) -> str:
+        """Format service parameters as JSON Schema."""
         fields = service_data.get("fields")
         if not isinstance(fields, dict) or not fields:
             return f"Service {domain}.{service} has no parameters."
 
-        lines = [f"## {domain}.{service} Parameters", ""]
+        # Build JSON Schema for service parameters
+        properties: dict[str, Any] = {}
+        required_fields: list[str] = []
+
         for field_name, field_data in fields.items():
             if not isinstance(field_data, dict):
                 continue
 
-            required = field_data.get("required", False)
+            # Skip sections (nested field groups) for now
+            if "fields" in field_data:
+                continue
+
+            is_required = field_data.get("required", False)
             selector = field_data.get("selector", {})
             desc = field_data.get("description", "")
 
-            req_str = " (required)" if required else ""
-            selector_str = ""
+            # Determine selector type
+            selector_type = None
             if isinstance(selector, dict) and selector:
-                selector_types = list(selector.keys())
-                if selector_types:
-                    selector_str = f" - type: {selector_types[0]}"
+                selector_keys = list(selector.keys())
+                if selector_keys:
+                    selector_type = selector_keys[0]
 
-            lines.append(f"- **{field_name}**{req_str}{selector_str}")
+            # Build field schema
+            field_schema: dict[str, Any] = {}
+            if selector_type:
+                # Get base schema from selector type
+                base_schema = get_selector_schema(selector_type)
+                if base_schema:
+                    field_schema = base_schema.copy()
+                else:
+                    field_schema["x-selector-type"] = selector_type
+
+            # Override description with service-specific one
             if isinstance(desc, str) and desc:
-                lines.append(f"  {desc}")
+                field_schema["description"] = desc
 
-        return "\n".join(lines)
+            properties[field_name] = field_schema
 
-    def _describe_selector(self, selector_type: str) -> str:
-        """Look up description for a selector type."""
-        descriptions = {
-            "action": "An automation action sequence (list of action objects)",
-            "addon": "Home Assistant add-on slug (string)",
-            "area": "Area ID string (e.g. 'living_room')",
-            "assist_pipeline": "Assist pipeline ID (string)",
-            "attribute": "Entity attribute name (string)",
-            "backup_location": "Backup location identifier (string)",
-            "boolean": "true or false",
-            "color_rgb": "Array of 3 integers [R, G, B], each 0-255",
-            "color_temp": "Color temperature in mireds (integer) or Kelvin",
-            "condition": "An automation condition (condition object)",
-            "config_entry": "Config entry ID (string)",
-            "constant": "A fixed constant value",
-            "conversation_agent": "Conversation agent ID (string)",
-            "country": "ISO 3166-1 alpha-2 country code (string, e.g. 'US')",
-            "date": "Date string in ISO format (YYYY-MM-DD)",
-            "datetime": "Date and time string in ISO format (YYYY-MM-DDTHH:MM:SS)",
-            "device": "Device ID string",
-            "duration": (
-                "Dict with optional keys: days, hours, minutes, seconds, milliseconds "
-                '(all numbers). Example: {"hours": 1, "minutes": 30}'
-            ),
-            "entity": "Entity ID string (e.g. 'light.living_room')",
-            "file": "File path or file content",
-            "floor": "Floor ID string",
-            "icon": "Material Design Icon name (string, e.g. 'mdi:lightbulb')",
-            "label": "Label ID string",
-            "language": "Language code (string, e.g. 'en')",
-            "location": (
-                "Dict with latitude, longitude (required), and radius (optional). "
-                'Example: {"latitude": 40.7, "longitude": -74.0}'
-            ),
-            "media": "Media content ID and type",
-            "navigation": "Navigation path within Home Assistant",
-            "number": (
-                "Numeric value; may have min/max/step constraints "
-                "defined by the service"
-            ),
-            "object": "Arbitrary JSON object",
-            "qr_code": "QR code data (string)",
-            "schedule": "Schedule definition object",
-            "select": "One of a fixed set of string options (see service description)",
-            "selector": "A selector definition object",
-            "state": "Entity state value (string)",
-            "statistic": "Statistic ID (string)",
-            "stt": "Speech-to-text engine ID (string)",
-            "target": (
-                "Dict with optional keys: entity_id, device_id, area_id, floor_id, "
-                "label_id (each can be a string or array of strings)"
-            ),
-            "template": "Jinja2 template string",
-            "text": "String value; may have multiline or regex constraints",
-            "theme": "Theme name (string)",
-            "time": "Time string in HH:MM:SS format",
-            "trigger": "An automation trigger definition",
-            "tts": "Text-to-speech engine ID (string)",
-            "ui_action": "UI action definition",
-            "ui_color": "UI color value",
+            if is_required:
+                required_fields.append(field_name)
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
         }
+        if required_fields:
+            schema["required"] = required_fields
 
-        if selector_type in descriptions:
-            return f"{selector_type}: {descriptions[selector_type]}"
-        return (
-            f"{selector_type}: Unknown selector type. "
-            "Check Home Assistant documentation."
-        )
+        json_block = json.dumps(schema, indent=2)
+
+        # Build markdown summary
+        markdown_parts = [f"## {domain}.{service} Parameters", ""]
+
+        for field_name, field_data in fields.items():
+            if not isinstance(field_data, dict):
+                continue
+
+            # Handle sections
+            if "fields" in field_data:
+                section_name = field_data.get("name", field_name)
+                markdown_parts.append(f"**{section_name}** (section)")
+                continue
+
+            is_required = field_data.get("required", False)
+            selector = field_data.get("selector", {})
+            desc = field_data.get("description", "")
+
+            selector_type = ""
+            if isinstance(selector, dict) and selector:
+                selector_keys = list(selector.keys())
+                if selector_keys:
+                    selector_type = f" [{selector_keys[0]}]"
+
+            req_str = " (required)" if is_required else ""
+            line = f"- **{field_name}**{req_str}{selector_type}"
+            if isinstance(desc, str) and desc:
+                line += f": {desc}"
+            markdown_parts.append(line)
+
+        return f"```json\n{json_block}\n```\n\n" + "\n".join(markdown_parts)
 
     def has_command(self, path: str) -> bool:
         """Check if a service exists."""
