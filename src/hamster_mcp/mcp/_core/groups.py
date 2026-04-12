@@ -466,11 +466,12 @@ class ServicesGroup:
             chunk = SELECTOR_TYPES[i : i + types_per_line]
             type_lines.append(", ".join(chunk))
 
+        newline = "\n"
         markdown = f"""## Available Selector Types
 
 {len(SELECTOR_TYPES)} selector types available:
 
-{chr(10).join(f"- {line}" for line in type_lines)}
+{newline.join(f"- {line}" for line in type_lines)}
 
 Use `schema("selector/<type>")` to get the JSON Schema for a specific type."""
 
