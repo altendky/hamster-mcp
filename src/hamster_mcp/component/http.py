@@ -39,6 +39,26 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _orjson_default(obj: object) -> object:
+    """Convert non-serializable objects for orjson.
+
+    Handles objects with as_dict() method (e.g., Context) by converting
+    them to dictionaries.
+
+    Args:
+        obj: Object that orjson doesn't know how to serialize
+
+    Returns:
+        JSON-serializable representation of the object
+
+    Raises:
+        TypeError: If object cannot be converted
+    """
+    if hasattr(obj, "as_dict"):
+        return obj.as_dict()
+    raise TypeError(f"Type is not JSON serializable: {type(obj).__name__}")
+
+
 @dataclass(frozen=False, slots=True)
 class InternalConnection:
     """Internal adapter for invoking WS handlers without a real WebSocket.
@@ -80,15 +100,23 @@ class InternalConnection:
         Note:
             Some HA handlers return data containing orjson.Fragment objects
             for performance (pre-serialized JSON). We unwrap these by doing
-            a round-trip through orjson serialization.
+            a round-trip through orjson serialization. Objects with as_dict()
+            methods (like Context) are converted to dicts.
         """
         import orjson
 
         # Unwrap any orjson.Fragment objects by serializing and deserializing.
         # This ensures the result contains only plain Python types that can be
         # serialized by any JSON library (e.g., the stdlib json module).
+        # The default handler converts objects with as_dict() (e.g., Context).
         if result is not None:
-            result = orjson.loads(orjson.dumps(result, option=orjson.OPT_NON_STR_KEYS))
+            result = orjson.loads(
+                orjson.dumps(
+                    result,
+                    option=orjson.OPT_NON_STR_KEYS,
+                    default=_orjson_default,
+                )
+            )
         self.result = result
         self._result_event.set()
 
