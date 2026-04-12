@@ -6,6 +6,7 @@ command sources (services, hass, supervisor).
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 import json
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -568,7 +569,7 @@ Use `schema("selector/<type>")` to get the JSON Schema for a specific type."""
                 # Get base schema from selector type
                 base_schema = get_selector_schema(selector_type)
                 if base_schema:
-                    field_schema = base_schema.copy()
+                    field_schema = copy.deepcopy(base_schema)
                 else:
                     field_schema["x-selector-type"] = selector_type
 
