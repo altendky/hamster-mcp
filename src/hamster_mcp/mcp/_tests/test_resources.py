@@ -79,6 +79,7 @@ class TestResourcesModule:
         assert "insights:service-targeting" in uris
         assert "insights:entity-ids" in uris
         assert "insights:selectors" in uris
+        assert "insights:entity-state-exploration" in uris
 
     def test_read_resource_found(self) -> None:
         resources = load_all_resources()
