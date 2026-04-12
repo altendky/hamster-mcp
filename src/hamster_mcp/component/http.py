@@ -557,7 +557,7 @@ class HamsterEffectHandler:
             labels_tuple = tuple(lid for lid in label_ids if isinstance(lid, str))
 
             devices[device_id] = DeviceInfo(
-                name=entry.get("name") or entry.get("name_by_user"),
+                name=entry.get("name_by_user") or entry.get("name"),
                 area_id=entry.get("area_id"),
                 labels=labels_tuple,
             )
