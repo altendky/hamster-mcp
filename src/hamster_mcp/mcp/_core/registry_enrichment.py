@@ -196,16 +196,19 @@ def _add_entity_enrichment(
     if area_id:
         _add_area_enrichment(area_id, enrichment, context)
 
-    # Resolve labels (combine entity and device labels)
+    # Resolve labels (combine entity, device, and area labels)
+    # Start with entity labels
     all_labels = _resolve_labels(entity.labels, context)
+    # Add device labels
     if entity.device_id:
         device = context.devices.get(entity.device_id)
         if device:
             device_labels = _resolve_labels(device.labels, context)
-            # Merge, keeping entity labels first
             all_labels = list(dict.fromkeys(all_labels + device_labels))
-    if all_labels:
-        enrichment["labels"] = all_labels
+    # Merge with any labels already set (from area enrichment)
+    existing = enrichment.get("labels", [])
+    if all_labels or existing:
+        enrichment["labels"] = list(dict.fromkeys(all_labels + existing))
 
 
 def _add_device_enrichment(
@@ -239,7 +242,7 @@ def _add_area_enrichment(
 ) -> None:
     """Add area-based enrichment fields.
 
-    Adds: area_name, floor_name
+    Adds: area_name, floor_name, labels (merged with existing)
     """
     area = context.areas.get(area_id)
     if area is None:
@@ -251,6 +254,13 @@ def _add_area_enrichment(
         floor = context.floors.get(area.floor_id)
         if floor:
             enrichment["floor_name"] = floor.name
+
+    # Merge area labels with any existing labels
+    area_labels = _resolve_labels(area.labels, context)
+    if area_labels:
+        existing = enrichment.get("labels", [])
+        # Deduplicate while preserving order (existing first, then area labels)
+        enrichment["labels"] = list(dict.fromkeys([*existing, *area_labels]))
 
 
 def _resolve_labels(

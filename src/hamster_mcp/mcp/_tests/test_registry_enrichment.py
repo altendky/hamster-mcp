@@ -56,7 +56,7 @@ def sample_context() -> RegistryContext:
             "area_living": AreaInfo(
                 name="Living Room",
                 floor_id="floor_1",
-                labels=(),
+                labels=("main_floor",),
             ),
             "area_bedroom": AreaInfo(
                 name="Bedroom",
@@ -77,6 +77,7 @@ def sample_context() -> RegistryContext:
             "smart_lights": LabelInfo(name="Smart Lights"),
             "downstairs": LabelInfo(name="Downstairs"),
             "zigbee": LabelInfo(name="Zigbee Devices"),
+            "main_floor": LabelInfo(name="Main Floor"),
         },
     )
 
@@ -122,6 +123,8 @@ class TestEnrichData:
         assert "Downstairs" in enrichment["labels"]
         # Device labels should also be included
         assert "Zigbee Devices" in enrichment["labels"]
+        # Area labels should also be included
+        assert "Main Floor" in enrichment["labels"]
 
     def test_enrich_entity_without_direct_area(
         self, sample_context: RegistryContext
@@ -168,13 +171,14 @@ class TestEnrichData:
         assert enrichment["floor_name"] == "Ground Floor"
 
     def test_enrich_area_id(self, sample_context: RegistryContext) -> None:
-        """Area ID enrichment adds area_name and floor_name."""
+        """Area ID enrichment adds area_name, floor_name, and labels."""
         data = {"area_id": "area_living", "entity_count": 5}
         result = enrich_data(data, sample_context)
 
         enrichment = result[ENRICHMENT_KEY]
         assert enrichment["area_name"] == "Living Room"
         assert enrichment["floor_name"] == "Ground Floor"
+        assert "Main Floor" in enrichment["labels"]
 
     def test_entity_takes_precedence_over_device(
         self, sample_context: RegistryContext
