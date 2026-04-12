@@ -39,7 +39,8 @@ Each selector type has a JSON Schema definition. For example,
     "days": {"type": "number", "minimum": 0},
     "hours": {"type": "number", "minimum": 0},
     "minutes": {"type": "number", "minimum": 0},
-    "seconds": {"type": "number", "minimum": 0}
+    "seconds": {"type": "number", "minimum": 0},
+    "milliseconds": {"type": "number", "minimum": 0}
   }
 }
 ```
