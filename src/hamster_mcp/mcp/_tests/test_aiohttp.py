@@ -29,6 +29,7 @@ from aiohttp.test_utils import TestClient, TestServer
 import pytest
 
 from hamster_mcp.mcp._core.groups import GroupRegistry, ServicesGroup
+from hamster_mcp.mcp._core.registry_enrichment import RegistryContext
 from hamster_mcp.mcp._core.session import SessionManager
 from hamster_mcp.mcp._core.supervisor_group import SupervisorGroup
 from hamster_mcp.mcp._core.types import (
@@ -123,6 +124,10 @@ class MockEffectHandler:
         if self.supervisor_should_raise is not None:
             raise self.supervisor_should_raise
         return self.supervisor_result
+
+    async def fetch_registry_context(self) -> RegistryContext:
+        """Fetch mock registry context for enrichment."""
+        return RegistryContext.empty()
 
 
 # Verify MockEffectHandler satisfies EffectHandler protocol

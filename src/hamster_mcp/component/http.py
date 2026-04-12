@@ -23,6 +23,14 @@ from homeassistant.exceptions import (
 )
 import voluptuous as vol
 
+from hamster_mcp.mcp._core.registry_enrichment import (
+    AreaInfo,
+    DeviceInfo,
+    EntityInfo,
+    FloorInfo,
+    LabelInfo,
+    RegistryContext,
+)
 from hamster_mcp.mcp._core.types import (
     HassCommandResult,
     ServiceCallResult,
@@ -446,6 +454,182 @@ class HamsterEffectHandler:
             return SupervisorCallResult(
                 success=False, error=f"Supervisor error: {type(err).__name__}: {err}"
             )
+
+    async def fetch_registry_context(self) -> RegistryContext:
+        """Fetch registry data for enriching command outputs.
+
+        Retrieves entity, device, area, floor, and label registry data
+        from Home Assistant for use in enriching JSON outputs with
+        human-readable names.
+
+        Returns:
+            RegistryContext containing all registry data for lookups.
+            Returns empty context if registries are unavailable.
+        """
+        entities: dict[str, EntityInfo] = {}
+        devices: dict[str, DeviceInfo] = {}
+        areas: dict[str, AreaInfo] = {}
+        floors: dict[str, FloorInfo] = {}
+        labels: dict[str, LabelInfo] = {}
+
+        # Fetch all registries in parallel
+        results = await asyncio.gather(
+            self._fetch_entity_registry(),
+            self._fetch_device_registry(),
+            self._fetch_area_registry(),
+            self._fetch_floor_registry(),
+            self._fetch_label_registry(),
+            return_exceptions=True,
+        )
+
+        # Process results, ignoring any that failed
+        entity_result, device_result, area_result, floor_result, label_result = results
+
+        if isinstance(entity_result, dict):
+            entities = entity_result
+        if isinstance(device_result, dict):
+            devices = device_result
+        if isinstance(area_result, dict):
+            areas = area_result
+        if isinstance(floor_result, dict):
+            floors = floor_result
+        if isinstance(label_result, dict):
+            labels = label_result
+
+        return RegistryContext(
+            entities=entities,
+            devices=devices,
+            areas=areas,
+            floors=floors,
+            labels=labels,
+        )
+
+    async def _fetch_entity_registry(self) -> dict[str, EntityInfo]:
+        """Fetch entity registry data."""
+        result = await self.execute_hass_command(
+            "config/entity_registry/list", {}, None
+        )
+        if not result.success or not isinstance(result.data, list):
+            return {}
+
+        entities: dict[str, EntityInfo] = {}
+        for entry in result.data:
+            if not isinstance(entry, dict):
+                continue
+            entity_id = entry.get("entity_id")
+            if not isinstance(entity_id, str):
+                continue
+
+            # Extract label IDs
+            label_ids = entry.get("labels", [])
+            if not isinstance(label_ids, list):
+                label_ids = []
+            labels_tuple = tuple(lid for lid in label_ids if isinstance(lid, str))
+
+            entities[entity_id] = EntityInfo(
+                name=entry.get("name") or entry.get("original_name"),
+                device_id=entry.get("device_id"),
+                area_id=entry.get("area_id"),
+                labels=labels_tuple,
+            )
+        return entities
+
+    async def _fetch_device_registry(self) -> dict[str, DeviceInfo]:
+        """Fetch device registry data."""
+        result = await self.execute_hass_command(
+            "config/device_registry/list", {}, None
+        )
+        if not result.success or not isinstance(result.data, list):
+            return {}
+
+        devices: dict[str, DeviceInfo] = {}
+        for entry in result.data:
+            if not isinstance(entry, dict):
+                continue
+            device_id = entry.get("id")
+            if not isinstance(device_id, str):
+                continue
+
+            # Extract label IDs
+            label_ids = entry.get("labels", [])
+            if not isinstance(label_ids, list):
+                label_ids = []
+            labels_tuple = tuple(lid for lid in label_ids if isinstance(lid, str))
+
+            devices[device_id] = DeviceInfo(
+                name=entry.get("name_by_user") or entry.get("name"),
+                area_id=entry.get("area_id"),
+                labels=labels_tuple,
+            )
+        return devices
+
+    async def _fetch_area_registry(self) -> dict[str, AreaInfo]:
+        """Fetch area registry data."""
+        result = await self.execute_hass_command("config/area_registry/list", {}, None)
+        if not result.success or not isinstance(result.data, list):
+            return {}
+
+        areas: dict[str, AreaInfo] = {}
+        for entry in result.data:
+            if not isinstance(entry, dict):
+                continue
+            area_id = entry.get("area_id")
+            if not isinstance(area_id, str):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+
+            # Extract label IDs
+            label_ids = entry.get("labels", [])
+            if not isinstance(label_ids, list):
+                label_ids = []
+            labels_tuple = tuple(lid for lid in label_ids if isinstance(lid, str))
+
+            areas[area_id] = AreaInfo(
+                name=name,
+                floor_id=entry.get("floor_id"),
+                labels=labels_tuple,
+            )
+        return areas
+
+    async def _fetch_floor_registry(self) -> dict[str, FloorInfo]:
+        """Fetch floor registry data."""
+        result = await self.execute_hass_command("config/floor_registry/list", {}, None)
+        if not result.success or not isinstance(result.data, list):
+            return {}
+
+        floors: dict[str, FloorInfo] = {}
+        for entry in result.data:
+            if not isinstance(entry, dict):
+                continue
+            floor_id = entry.get("floor_id")
+            if not isinstance(floor_id, str):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+            floors[floor_id] = FloorInfo(name=name)
+        return floors
+
+    async def _fetch_label_registry(self) -> dict[str, LabelInfo]:
+        """Fetch label registry data."""
+        result = await self.execute_hass_command("config/label_registry/list", {}, None)
+        if not result.success or not isinstance(result.data, list):
+            return {}
+
+        labels: dict[str, LabelInfo] = {}
+        for entry in result.data:
+            if not isinstance(entry, dict):
+                continue
+            label_id = entry.get("label_id")
+            if not isinstance(label_id, str):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+            labels[label_id] = LabelInfo(name=name)
+        return labels
 
 
 class HamsterMCPView(HomeAssistantView):
