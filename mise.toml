@@ -4,6 +4,15 @@
 python = "3.14"
 uv = "latest"
 "pipx:pre-commit" = "4.5.1"
+# Provides cargo-binstall so the cargo backend can download pre-built binaries
+# instead of compiling from source.
+cargo-binstall = "latest"
+# lychee uses the cargo backend with binstall support so that pre-built binaries
+# are downloaded where available (Linux, Windows x64, macOS ARM64), and source
+# compilation is used as a fallback on platforms without pre-built binaries
+# (macOS Intel). The lychee project dropped macOS Intel binaries after v0.15.1
+# (April 2024), so the aqua backend cannot cover all CI platforms.
+"cargo:lychee" = "0.23.0"
 
 [settings]
 # Auto-create and activate a .venv managed by uv.
