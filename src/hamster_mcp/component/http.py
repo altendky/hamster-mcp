@@ -257,6 +257,8 @@ class HamsterEffectHandler:
         target: dict[str, object] | None,
         data: dict[str, object],
         user_id: str | None,
+        *,
+        supports_response: bool = True,
     ) -> ServiceCallResult:
         """Execute a Home Assistant service call.
 
@@ -266,6 +268,9 @@ class HamsterEffectHandler:
             target: Target entities/devices/areas, or None
             data: Service data parameters
             user_id: Authenticated user ID for authorization
+            supports_response: Whether service supports return_response.
+                Services without response support will fail if called with
+                return_response=True, so we only set it when supported.
 
         Returns:
             ServiceCallResult indicating success or failure
@@ -279,7 +284,7 @@ class HamsterEffectHandler:
                 target=target,
                 context=context,
                 blocking=True,
-                return_response=True,
+                return_response=supports_response,
             )
             # Cast result to dict[str, object] - HA returns JsonValueType but
             # our interface uses object for flexibility

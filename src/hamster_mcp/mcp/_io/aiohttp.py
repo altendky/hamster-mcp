@@ -63,6 +63,8 @@ class EffectHandler(Protocol):
         target: dict[str, object] | None,
         data: dict[str, object],
         user_id: str | None,
+        *,
+        supports_response: bool = True,
     ) -> ServiceCallResult:
         """Execute a Home Assistant service call.
 
@@ -72,6 +74,7 @@ class EffectHandler(Protocol):
             target: Target entities/devices/areas, or None
             data: Service data parameters
             user_id: Authenticated user ID for authorization
+            supports_response: Whether service supports return_response
 
         Returns:
             ServiceCallResult indicating success or failure
@@ -241,6 +244,7 @@ class AiohttpMCPTransport:
                         current.target,
                         current.data,
                         current.user_id,
+                        supports_response=current.supports_response,
                     )
                 except Exception as err:
                     _LOGGER.exception(
