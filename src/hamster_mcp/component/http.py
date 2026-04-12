@@ -54,8 +54,9 @@ def _orjson_default(obj: object) -> object:
     Raises:
         TypeError: If object cannot be converted
     """
-    if hasattr(obj, "as_dict"):
-        return obj.as_dict()
+    as_dict = getattr(obj, "as_dict", None)
+    if callable(as_dict):
+        return as_dict()
     raise TypeError(f"Type is not JSON serializable: {type(obj).__name__}")
 
 
