@@ -6,3 +6,4 @@
 - [Services and Hass Groups](services-and-hass.md) --- How the services and hass groups relate and when to use each
 - [Reading Configurations](reading-configurations.md) --- How to read the full definition of scripts, automations, and other configurable entities
 - [Entity State Exploration](entity-state-exploration.md) --- Explore entity attributes before searching; state is self-documenting
+- [Log Sources](log-sources.md) --- Which log source to query when investigating events, errors, or automation behavior
