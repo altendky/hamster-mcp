@@ -62,6 +62,7 @@ class ServiceCall:
     data: dict[str, object]
     user_id: str | None
     continuation: Continuation
+    supports_response: bool = True
 
 
 @dataclass(frozen=True, slots=True)

@@ -66,7 +66,7 @@ class MockEffectHandler:
     """Mock effect handler for testing."""
 
     calls: list[
-        tuple[str, str, dict[str, object] | None, dict[str, object], str | None]
+        tuple[str, str, dict[str, object] | None, dict[str, object], str | None, bool]
     ] = field(default_factory=list)
     hass_calls: list[tuple[str, dict[str, object], str | None]] = field(
         default_factory=list
@@ -90,9 +90,11 @@ class MockEffectHandler:
         target: dict[str, object] | None,
         data: dict[str, object],
         user_id: str | None,
+        *,
+        supports_response: bool = True,
     ) -> ServiceCallResult:
         """Execute mock service call."""
-        self.calls.append((domain, service, target, data, user_id))
+        self.calls.append((domain, service, target, data, user_id, supports_response))
         if self.should_raise is not None:
             raise self.should_raise
         return self.result

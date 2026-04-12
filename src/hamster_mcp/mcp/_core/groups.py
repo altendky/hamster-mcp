@@ -513,6 +513,26 @@ class ServicesGroup:
             return False
         return service in domain_services
 
+    def _supports_response(self, domain: str, service: str) -> bool:
+        """Check if a service supports response data.
+
+        Args:
+            domain: Service domain (e.g. 'light')
+            service: Service name (e.g. 'turn_on')
+
+        Returns:
+            True if the service supports returning response data, False otherwise.
+            Services with a "response" key in their description support responses.
+        """
+        domain_services = self._descriptions.get(domain)
+        if not isinstance(domain_services, dict):
+            return False
+        service_data = domain_services.get(service)
+        if not isinstance(service_data, dict):
+            return False
+        # HA adds "response" key only when SupportsResponse is not NONE
+        return "response" in service_data
+
     def parse_call_args(
         self, path: str, arguments: dict[str, object], user_id: str | None
     ) -> ToolEffect:
@@ -554,4 +574,5 @@ class ServicesGroup:
             data=data,
             user_id=user_id,
             continuation=FormatServiceResponse(),
+            supports_response=self._supports_response(domain, service),
         )
