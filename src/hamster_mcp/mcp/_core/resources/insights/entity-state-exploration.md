@@ -67,7 +67,7 @@ Avoid these common mistakes:
 
 | Anti-pattern | Why it's wrong |
 | --- | --- |
-| Searching logs for information | State data is real-time; logs are historical |
+| Searching logs for information | State data reflects current values; logs are historical |
 | Grepping for specific attribute names | You may miss the actual attribute name used |
 | Assuming one integration's attributes apply to another | Integrations vary widely |
 | Reverse-engineering from service calls | State is the source of truth |
