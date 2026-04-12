@@ -97,6 +97,23 @@ services group is enabled:
 The response includes domain, service names, and field descriptions, but
 in a single bulk response rather than individual searchable entries.
 
+## Beyond Service Calls
+
+The `hass` group contains many WebSocket commands beyond `call_service`.
+These include commands for reading entity configurations, inspecting
+execution traces, and querying registries.  For example:
+
+- **`hass/script/config`** and **`hass/automation/config`** return the full
+  definition (action sequences, triggers, conditions) of a script or
+  automation.
+- **`hass/trace/list`** and **`hass/trace/get`** inspect past execution runs
+  for debugging.
+- **`hass/config/entity_registry/list`**, **`hass/config/device_registry/list`**,
+  and similar commands query the various registries.
+
+See the *Reading Configurations* insight document for details on reading
+script and automation definitions.
+
 ## Metadata Comparison
 
 | Capability | `services/` group | `hass/call_service` |
