@@ -1,7 +1,7 @@
 [tools]
 # Match the Python version required by the latest stable Home Assistant
 # release (2026.3.x requires Python 3.14).
-python = "3.14"
+python = "3.14.6"
 uv = "latest"
 "pipx:pre-commit" = "4.5.1"
 # Provides cargo-binstall so the cargo backend can download pre-built binaries
