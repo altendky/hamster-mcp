@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.exceptions import (
@@ -12,6 +13,26 @@ from homeassistant.exceptions import (
 import pytest
 
 from hamster_mcp.component.http import HamsterEffectHandler
+
+
+def mock_hassio_modules(
+    hassio_api_error: type[BaseException] = Exception,
+) -> dict[str, ModuleType]:
+    """Create mock hassio modules for lazy Supervisor imports."""
+    hassio_module = ModuleType("homeassistant.components.hassio")
+    hassio_module.__dict__["__path__"] = []
+
+    handler_module = ModuleType("homeassistant.components.hassio.handler")
+    handler_module.__dict__["HassioAPIError"] = hassio_api_error
+
+    const_module = ModuleType("homeassistant.components.hassio.const")
+    const_module.__dict__["DATA_COMPONENT"] = "hassio"
+
+    return {
+        "homeassistant.components.hassio": hassio_module,
+        "homeassistant.components.hassio.handler": handler_module,
+        "homeassistant.components.hassio.const": const_module,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +53,13 @@ def mock_hass() -> MagicMock:
 def effect_handler(mock_hass: MagicMock) -> HamsterEffectHandler:
     """Create an effect handler with mock hass."""
     return HamsterEffectHandler(mock_hass)
+
+
+def test_hassio_api_error_supported_import_path() -> None:
+    """Test Home Assistant's supported HassioAPIError import path."""
+    from homeassistant.components.hassio.handler import HassioAPIError
+
+    assert issubclass(HassioAPIError, RuntimeError)
 
 
 async def test_successful_service_call(
@@ -226,15 +254,7 @@ class TestExecuteSupervisorCall:
             "data": {"version": "2024.1", "hostname": "homeassistant"}
         }
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.hassio": MagicMock(HassioAPIError=Exception),
-                "homeassistant.components.hassio.const": MagicMock(
-                    DATA_COMPONENT="hassio"
-                ),
-            },
-        ):
+        with patch.dict("sys.modules", mock_hassio_modules()):
             result = await effect_handler.execute_supervisor_call(
                 method="GET",
                 path="/core/info",
@@ -261,15 +281,7 @@ class TestExecuteSupervisorCall:
             "2024-01-01 INFO Starting...\n2024-01-01 INFO Ready"
         )
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.hassio": MagicMock(HassioAPIError=Exception),
-                "homeassistant.components.hassio.const": MagicMock(
-                    DATA_COMPONENT="hassio"
-                ),
-            },
-        ):
+        with patch.dict("sys.modules", mock_hassio_modules()):
             result = await effect_handler.execute_supervisor_call(
                 method="GET",
                 path="/core/logs",
@@ -349,15 +361,7 @@ class TestExecuteSupervisorCall:
         mock_hass.auth.async_get_user = AsyncMock(return_value=mock_admin_user)
         mock_hass.data = {}  # No hassio
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.hassio": MagicMock(HassioAPIError=Exception),
-                "homeassistant.components.hassio.const": MagicMock(
-                    DATA_COMPONENT="hassio"
-                ),
-            },
-        ):
+        with patch.dict("sys.modules", mock_hassio_modules()):
             result = await effect_handler.execute_supervisor_call(
                 method="GET",
                 path="/core/info",
@@ -388,17 +392,7 @@ class TestExecuteSupervisorCall:
             "API Error: 401 Unauthorized"
         )
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.hassio": MagicMock(
-                    HassioAPIError=MockHassioAPIError
-                ),
-                "homeassistant.components.hassio.const": MagicMock(
-                    DATA_COMPONENT="hassio"
-                ),
-            },
-        ):
+        with patch.dict("sys.modules", mock_hassio_modules(MockHassioAPIError)):
             result = await effect_handler.execute_supervisor_call(
                 method="GET",
                 path="/core/info",
@@ -427,17 +421,7 @@ class TestExecuteSupervisorCall:
             pass
 
         with (
-            patch.dict(
-                "sys.modules",
-                {
-                    "homeassistant.components.hassio": MagicMock(
-                        HassioAPIError=MockHassioAPIError
-                    ),
-                    "homeassistant.components.hassio.const": MagicMock(
-                        DATA_COMPONENT="hassio"
-                    ),
-                },
-            ),
+            patch.dict("sys.modules", mock_hassio_modules(MockHassioAPIError)),
             patch("hamster_mcp.component.http._LOGGER") as mock_logger,
         ):
             result = await effect_handler.execute_supervisor_call(
@@ -466,15 +450,7 @@ class TestExecuteSupervisorCall:
         mock_hass.data = {"hassio": mock_hassio}
         mock_hassio.send_command.return_value = {"data": {"success": True}}
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.hassio": MagicMock(HassioAPIError=Exception),
-                "homeassistant.components.hassio.const": MagicMock(
-                    DATA_COMPONENT="hassio"
-                ),
-            },
-        ):
+        with patch.dict("sys.modules", mock_hassio_modules()):
             await effect_handler.execute_supervisor_call(
                 method="POST",
                 path="/some/endpoint",
