@@ -388,6 +388,13 @@ class HamsterEffectHandler:
             )
         handler, schema = unpacked
 
+        reserved_keys = sorted({"id", "type"}.intersection(params))
+        if reserved_keys:
+            return HassCommandResult(
+                success=False,
+                error=(f"Validation error: reserved keys not allowed: {reserved_keys}"),
+            )
+
         # Build message with required fields
         msg: dict[str, object] = {"id": 1, "type": command_type, **params}
 

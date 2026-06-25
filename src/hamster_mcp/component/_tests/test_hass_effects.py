@@ -825,6 +825,70 @@ class TestExecuteHassCommandSchemaFalseExtraKeys:
         assert result.data == {"states": []}
 
 
+@pytest.mark.parametrize(
+    ("params", "expected_keys"),
+    [
+        ({"id": 99}, "['id']"),
+        ({"type": "get_states"}, "['type']"),
+        ({"id": 99, "type": "anything"}, "['id', 'type']"),
+    ],
+)
+async def test_execute_hass_command_schema_false_rejects_reserved_params(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+    params: dict[str, object],
+    expected_keys: str,
+) -> None:
+    """schema=False treats reserved envelope fields as invalid params."""
+    handler = MagicMock()
+    mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_states",
+        params=params,
+        user_id=None,
+    )
+
+    assert result.success is False
+    assert f"reserved keys not allowed: {expected_keys}" in (result.error or "")
+    handler.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_keys"),
+    [
+        ({"entity_id": "light.living_room", "id": 99}, "['id']"),
+        ({"entity_id": "light.living_room", "type": "get_entity"}, "['type']"),
+    ],
+)
+async def test_execute_hass_command_schema_rejects_reserved_params(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+    params: dict[str, object],
+    expected_keys: str,
+) -> None:
+    """Schema-backed commands also reject caller-supplied envelope fields."""
+    handler = MagicMock()
+    schema = vol.Schema(
+        {
+            vol.Required("id"): int,
+            vol.Required("type"): str,
+            vol.Required("entity_id"): str,
+        }
+    )
+    mock_hass.data = {"websocket_api": {"get_entity": (handler, schema)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_entity",
+        params=params,
+        user_id=None,
+    )
+
+    assert result.success is False
+    assert f"reserved keys not allowed: {expected_keys}" in (result.error or "")
+    handler.assert_not_called()
+
+
 class TestExecuteHassCommandUnknownUser:
     """Tests rejection of unknown / invalid user_id."""
 
