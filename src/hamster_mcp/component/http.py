@@ -23,6 +23,7 @@ from homeassistant.exceptions import (
 )
 import voluptuous as vol
 
+from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
 from hamster_mcp.mcp._core.registry_enrichment import (
     AreaInfo,
     DeviceInfo,
@@ -50,8 +51,11 @@ _LOGGER = logging.getLogger(__name__)
 def _orjson_default(obj: object) -> object:
     """Convert non-serializable objects for orjson.
 
-    Handles objects with as_dict() method (e.g., Context) by converting
-    them to dictionaries.
+    Mirrors Home Assistant's ``json_encoder_default``
+    (``homeassistant.helpers.json``) so handler results containing HA
+    extension types --- sets, tuples, ``Path``, ``datetime``,
+    ``json_fragment``, and objects with ``as_dict()`` --- round-trip the
+    same way HA's real WebSocket connection would serialize them.
 
     Args:
         obj: Object that orjson doesn't know how to serialize
@@ -62,9 +66,21 @@ def _orjson_default(obj: object) -> object:
     Raises:
         TypeError: If object cannot be converted
     """
+    import datetime
+    from pathlib import Path
+
+    json_fragment = getattr(obj, "json_fragment", None)
+    if json_fragment is not None:
+        return json_fragment
+    if isinstance(obj, (set, tuple)):
+        return list(obj)
     as_dict = getattr(obj, "as_dict", None)
     if callable(as_dict):
         return as_dict()
+    if isinstance(obj, Path):
+        return obj.as_posix()
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
     raise TypeError(f"Type is not JSON serializable: {type(obj).__name__}")
 
 
@@ -78,14 +94,36 @@ class InternalConnection:
 
     hass: HomeAssistant
     user: User | None
-    # Required by ActiveConnection interface
+    # Required by ActiveConnection interface. These are not used by the
+    # internal invocation path but are kept in sync with HA's connection
+    # contract so handlers that touch them (e.g. supported_features,
+    # last_id bookkeeping in error paths) do not raise AttributeError.
     subscriptions: dict[Hashable, Callable[[], Any]] = field(default_factory=dict)
     supported_features: dict[str, float] = field(default_factory=dict)
+    can_coalesce: bool = False
+    last_id: int = 0
+    refresh_token_id: str | None = None
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger(__name__))
     # Result capture
     _result_event: asyncio.Event = field(init=False, default_factory=asyncio.Event)
     result: object = field(init=False, default=None)
     error: tuple[str, str] | None = field(init=False, default=None)  # (code, message)
+
+    @callback
+    def set_supported_features(self, features: dict[str, float]) -> None:
+        """Record supported features (mirrors HA's ActiveConnection).
+
+        The internal adapter does not negotiate features with a client, so
+        this only updates the local state. The ``supported_features``
+        command itself is filtered out by HassGroup; this method exists
+        to keep the connection contract intact for any other handler that
+        might inspect or set features.
+        """
+        self.supported_features = features
+        # Mirror HA's behavior of recomputing can_coalesce. We do not
+        # import the const to avoid leaking another private dependency;
+        # the key name is stable HA public protocol.
+        self.can_coalesce = "coalesce_messages" in features
 
     def context(self, msg: dict[str, object]) -> Context:
         """Create a context for command execution.
@@ -337,13 +375,33 @@ class HamsterEffectHandler:
                 success=False, error=f"Unknown command: {command_type}"
             )
 
-        handler, schema = handler_info
+        # Guard against HA registry shape drift. The current shape is
+        # ``(handler, schema_or_False)``; bail out cleanly if that changes
+        # so we surface a clear error instead of an unpacking ValueError.
+        unpacked = _unpack_handler_entry(handler_info)
+        if unpacked is None:
+            return HassCommandResult(
+                success=False,
+                error=(
+                    f"Unsupported websocket_api registry entry for '{command_type}'"
+                ),
+            )
+        handler, schema = unpacked
 
         # Build message with required fields
         msg: dict[str, object] = {"id": 1, "type": command_type, **params}
 
         # Validate params against schema if present (schema=False means no params)
-        if schema is not False:
+        if schema is False:
+            # Mirror HA's connection.async_handle behavior: when there is
+            # no schema, only ``id`` and ``type`` are allowed.
+            if len(msg) > 2:
+                extra = sorted(set(msg) - {"id", "type"})
+                return HassCommandResult(
+                    success=False,
+                    error=f"Validation error: extra keys not allowed: {extra}",
+                )
+        else:
             try:
                 msg = schema(msg)
             except vol.Invalid as err:
@@ -351,10 +409,17 @@ class HamsterEffectHandler:
                     success=False, error=f"Validation error: {err}"
                 )
 
-        # Resolve user_id to User object for authorization checks
+        # Resolve user_id to User object for authorization checks. An unknown
+        # user_id must fail loudly --- falling through as anonymous would
+        # silently widen the trust boundary.
         user = None
         if user_id:
             user = await self._hass.auth.async_get_user(user_id)
+            if user is None:
+                return HassCommandResult(
+                    success=False,
+                    error=f"Unknown user: {user_id}",
+                )
 
         conn = InternalConnection(self._hass, user)
 

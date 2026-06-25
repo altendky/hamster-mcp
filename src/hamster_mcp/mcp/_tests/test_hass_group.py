@@ -372,6 +372,108 @@ class TestCommandFiltering:
         assert _is_filtered_command("call_service") is False
         assert _is_filtered_command("config/entity_registry/list") is False
 
+    def test_subscribe_in_path_filtered(self) -> None:
+        """Commands containing 'subscribe' anywhere in the path are filtered.
+
+        HA registers commands like ``trigger_platforms/subscribe`` and
+        ``condition_platforms/subscribe`` which the previous prefix-only
+        filter missed.
+        """
+        from hamster_mcp.mcp._core.hass_group import _is_filtered_command
+
+        assert _is_filtered_command("trigger_platforms/subscribe") is True
+        assert _is_filtered_command("condition_platforms/subscribe") is True
+
+    def test_unsubscribe_in_path_filtered(self) -> None:
+        """Commands containing 'unsubscribe' anywhere are filtered."""
+        from hamster_mcp.mcp._core.hass_group import _is_filtered_command
+
+        assert _is_filtered_command("entities/unsubscribe") is True
+
+    def test_render_template_filtered(self) -> None:
+        """render_template is event-producing and must be filtered.
+
+        Although it does not contain 'subscribe' in its name,
+        ``handle_render_template`` registers a subscription and emits
+        event messages through send_message.
+        """
+        from hamster_mcp.mcp._core.hass_group import _is_filtered_command
+
+        assert _is_filtered_command("render_template") is True
+
+    def test_supported_features_filtered(self) -> None:
+        """supported_features requires set_supported_features lifecycle."""
+        from hamster_mcp.mcp._core.hass_group import _is_filtered_command
+
+        assert _is_filtered_command("supported_features") is True
+
+    def test_fire_event_filtered(self) -> None:
+        """fire_event is a side-effectful command and is filtered."""
+        from hamster_mcp.mcp._core.hass_group import _is_filtered_command
+
+        assert _is_filtered_command("fire_event") is True
+
+
+class TestUnpackHandlerEntry:
+    """Tests for the registry tuple shape guard."""
+
+    def test_valid_entry_unpacks(self) -> None:
+        """A valid (handler, schema) tuple unpacks cleanly."""
+        from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
+
+        def handler() -> None: ...  # pragma: no cover - never called
+
+        unpacked = _unpack_handler_entry((handler, False))
+        assert unpacked is not None
+        assert unpacked[0] is handler
+        assert unpacked[1] is False
+
+    def test_non_tuple_rejected(self) -> None:
+        """Non-tuple entries are rejected."""
+        from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
+
+        assert _unpack_handler_entry("not-a-tuple") is None
+        assert _unpack_handler_entry(None) is None
+        assert _unpack_handler_entry([lambda: None, False]) is None
+
+    def test_wrong_arity_rejected(self) -> None:
+        """Tuples of wrong arity are rejected."""
+        from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
+
+        def handler() -> None: ...  # pragma: no cover - never called
+
+        assert _unpack_handler_entry((handler,)) is None
+        assert _unpack_handler_entry((handler, False, "extra")) is None
+
+    def test_non_callable_handler_rejected(self) -> None:
+        """Tuples with a non-callable handler are rejected."""
+        from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
+
+        assert _unpack_handler_entry(("not-callable", False)) is None
+
+
+class TestDiscoverCommandsShapeGuard:
+    """Tests that discover_commands defends against registry shape drift."""
+
+    def test_skips_malformed_entries(self) -> None:
+        """Malformed entries are skipped rather than raising."""
+
+        def good_handler() -> None: ...  # pragma: no cover - never called
+
+        registry = {
+            "good_command": (good_handler, False),
+            "bad_string": "not-a-tuple",
+            "bad_arity": (good_handler,),
+            "bad_handler": ("not-callable", False),
+        }
+
+        commands = discover_commands(registry)  # type: ignore[arg-type]
+
+        assert "good_command" in commands
+        assert "bad_string" not in commands
+        assert "bad_arity" not in commands
+        assert "bad_handler" not in commands
+
 
 class TestVoluptuousConversion:
     """Tests for voluptuous schema conversion."""
