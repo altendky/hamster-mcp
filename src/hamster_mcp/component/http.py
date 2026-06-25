@@ -413,10 +413,8 @@ class HamsterEffectHandler:
 
         # Import hassio components - they may not be available on all installations
         try:
-            from homeassistant.components.hassio import (  # type: ignore[attr-defined]
-                HassioAPIError,
-            )
             from homeassistant.components.hassio.const import DATA_COMPONENT
+            from homeassistant.components.hassio.handler import HassioAPIError
         except ImportError:
             return SupervisorCallResult(
                 success=False, error="Supervisor integration not available"
