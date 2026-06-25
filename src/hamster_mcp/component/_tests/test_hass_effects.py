@@ -913,6 +913,27 @@ class TestExecuteHassCommandUnknownUser:
         handler.assert_not_called()
 
 
+async def test_execute_hass_command_empty_user_id_returns_error(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+) -> None:
+    """An empty string user_id is a provided but unknown user."""
+    mock_hass.auth.async_get_user.return_value = None
+    handler = MagicMock()
+    mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_states",
+        params={},
+        user_id="",
+    )
+
+    assert result.success is False
+    assert "Unknown user" in (result.error or "")
+    mock_hass.auth.async_get_user.assert_called_once_with("")
+    handler.assert_not_called()
+
+
 class TestExecuteHassCommandRegistryShape:
     """Tests defensive handling of unexpected websocket_api registry shapes."""
 

@@ -420,7 +420,7 @@ class HamsterEffectHandler:
         # user_id must fail loudly --- falling through as anonymous would
         # silently widen the trust boundary.
         user = None
-        if user_id:
+        if user_id is not None:
             user = await self._hass.auth.async_get_user(user_id)
             if user is None:
                 return HassCommandResult(
