@@ -19,6 +19,8 @@ from collections.abc import Mapping
 import copy
 from typing import Any
 
+from homeassistant.helpers.selector import SELECTORS as HA_SELECTOR_TYPES
+
 
 def _string_or_array(description: str) -> dict[str, Any]:
     """Create a schema for a value that can be string or array of strings."""
@@ -31,10 +33,11 @@ def _string_or_array(description: str) -> dict[str, Any]:
     }
 
 
-# JSON Schema definitions for each selector type.
-# Keys mirror homeassistant.helpers.selector.SELECTORS exactly; schema bodies are
-# curated for MCP clients rather than generated from HA's voluptuous validators.
-SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
+# JSON Schema definitions for known selector types.
+# Schema bodies are curated for MCP clients rather than generated from HA's
+# voluptuous validators. The public SELECTOR_SCHEMAS below is filtered to the
+# selector types registered by the installed Home Assistant version.
+_KNOWN_SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
     "action": {
         "type": "array",
         "x-selector-type": "action",
@@ -306,6 +309,12 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "x-selector-type": "trigger",
         "description": "An automation trigger definition",
     },
+}
+
+SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
+    selector_type: schema
+    for selector_type, schema in _KNOWN_SELECTOR_SCHEMAS.items()
+    if selector_type in HA_SELECTOR_TYPES
 }
 
 # Sorted list of all selector types for discovery
