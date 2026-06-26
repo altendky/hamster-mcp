@@ -32,7 +32,8 @@ def _string_or_array(description: str) -> dict[str, Any]:
 
 
 # JSON Schema definitions for each selector type.
-# Keys match HA's selector type names exactly.
+# Keys mirror homeassistant.helpers.selector.SELECTORS exactly; schema bodies are
+# curated for MCP clients rather than generated from HA's voluptuous validators.
 SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
     "action": {
         "type": "array",
@@ -44,6 +45,11 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "string",
         "x-selector-type": "addon",
         "description": "Home Assistant add-on slug",
+    },
+    "app": {
+        "type": "string",
+        "x-selector-type": "app",
+        "description": "Home Assistant app slug",
     },
     "area": {
         "type": "string",
@@ -69,6 +75,37 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "boolean",
         "x-selector-type": "boolean",
         "description": "Boolean value: true or false",
+    },
+    "choose": {
+        "x-selector-type": "choose",
+        "description": (
+            "Value matching one of the configured selector choices. "
+            "Object-form values include active_choice and a property named "
+            "for the active choice."
+        ),
+        "oneOf": [
+            {
+                "type": "object",
+                "description": "Object form for an explicit active choice",
+                "properties": {
+                    "active_choice": {
+                        "type": "string",
+                        "description": (
+                            "Choice key selected from the configured choices"
+                        ),
+                    }
+                },
+                "required": ["active_choice"],
+                "additionalProperties": True,
+            },
+            {
+                "not": {"type": "object"},
+                "description": (
+                    "Direct value form, validated against the configured "
+                    "choice selectors in order"
+                ),
+            },
+        ],
     },
     "color_rgb": {
         "type": "array",
@@ -195,11 +232,6 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
             "media_content_type": {"type": "string"},
         },
     },
-    "navigation": {
-        "type": "string",
-        "x-selector-type": "navigation",
-        "description": "Navigation path within Home Assistant",
-    },
     "number": {
         "type": "number",
         "x-selector-type": "number",
@@ -215,22 +247,12 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "x-selector-type": "qr_code",
         "description": "QR code data",
     },
-    "schedule": {
-        "type": "object",
-        "x-selector-type": "schedule",
-        "description": "Schedule definition object",
-    },
     "select": {
         "type": "string",
         "x-selector-type": "select",
         "description": (
             "One of a fixed set of string options (see service for valid values)"
         ),
-    },
-    "selector": {
-        "type": "object",
-        "x-selector-type": "selector",
-        "description": "A selector definition object (meta-type)",
     },
     "state": {
         "type": "string",
@@ -241,11 +263,6 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "string",
         "x-selector-type": "statistic",
         "description": "Statistic ID for long-term statistics",
-    },
-    "stt": {
-        "type": "string",
-        "x-selector-type": "stt",
-        "description": "Speech-to-text engine ID",
     },
     "target": {
         "type": "object",
@@ -288,21 +305,6 @@ SELECTOR_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "object",
         "x-selector-type": "trigger",
         "description": "An automation trigger definition",
-    },
-    "tts": {
-        "type": "string",
-        "x-selector-type": "tts",
-        "description": "Text-to-speech engine ID",
-    },
-    "ui_action": {
-        "type": "object",
-        "x-selector-type": "ui_action",
-        "description": "UI action definition",
-    },
-    "ui_color": {
-        "type": "string",
-        "x-selector-type": "ui_color",
-        "description": "UI color value",
     },
 }
 
