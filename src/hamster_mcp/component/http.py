@@ -513,11 +513,18 @@ class HamsterEffectHandler:
             # signature accepts a `params` kwarg for query parameters; pass
             # GET-style arguments there so they reach the Supervisor instead
             # of being silently dropped.
+            #
+            # Bound the timeout instead of passing None: the Supervisor's
+            # streaming /logs/follow variants never close on their own, and
+            # aiohttp.ClientTimeout(total=None) would block the call forever.
+            # 300 seconds is generous for large log retrievals while keeping
+            # streaming endpoints from holding an MCP request open
+            # indefinitely.
             result = await hassio.send_command(
                 path,
                 method=method.lower(),
                 payload=send_payload,
-                timeout=None,
+                timeout=300,
                 return_text=returns_text,
                 params=send_params,
             )
