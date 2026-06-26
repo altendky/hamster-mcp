@@ -23,7 +23,9 @@ Use `schema("selector")` to get a list of all available selector types:
 }
 ```
 
-The `x-selector-types` annotation lists all valid selector type names.
+The `x-selector-types` annotation lists all valid selector type names from
+Home Assistant's backend selector registry. The schema bodies are curated JSON
+Schema summaries for MCP clients.
 
 ## JSON Schema Output
 

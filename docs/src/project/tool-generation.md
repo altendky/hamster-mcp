@@ -55,8 +55,10 @@ Rather than translating selectors to JSON Schema (as the previous per-service
 tool design required), the meta-tool pattern exposes them as-is via `explain`
 and documents their expected input formats via `schema`.
 
-The `SELECTOR_DESCRIPTIONS` mapping in `_core/tools.py` provides a
-human-readable description of each selector type's expected input format.
+The `SELECTOR_SCHEMAS` mapping in `_core/selector_schemas.py` provides a
+curated JSON Schema description of each selector type's expected input format.
+Its keys are tested against Home Assistant's selector registry so the catalog
+tracks the supported HA version under test.
 Examples:
 
 | Selector | Expected input |
