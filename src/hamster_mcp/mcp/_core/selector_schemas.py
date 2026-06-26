@@ -352,11 +352,11 @@ def get_configured_selector_schema(
     elif selector_type == "constant":
         _apply_constant_config(schema, config)
 
-    if selector_type in {"area", "device", "entity", "floor", "label", "select"}:
-        _apply_multiple_config(schema, config)
-
     if filter_config := config.get("filter"):
         schema["x-ha-filter"] = copy.deepcopy(filter_config)
+
+    if selector_type in {"area", "device", "entity", "floor", "label", "select"}:
+        _apply_multiple_config(schema, config)
 
     return schema
 

@@ -478,6 +478,7 @@ class TestServicesGroupSchema:
         entity_ids = data_properties["entity_ids"]
         assert entity_ids["type"] == "array"
         assert entity_ids["items"]["type"] == "string"
+        assert entity_ids["items"]["x-ha-filter"] == {"domain": "light"}
         assert entity_ids["x-ha-filter"] == {"domain": "light"}
 
     def test_schema_service_flattens_section_fields(self) -> None:
