@@ -15,6 +15,7 @@ This module provides:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import copy
 from typing import Any
 
@@ -319,6 +320,137 @@ def get_selector_schema(selector_type: str) -> dict[str, Any] | None:
         JSON Schema dict for the selector, or None if unknown type.
     """
     return SELECTOR_SCHEMAS.get(selector_type)
+
+
+def get_configured_selector_schema(
+    selector_type: str,
+    selector_config: object,
+) -> dict[str, Any] | None:
+    """Get a selector schema with service-specific selector config applied.
+
+    Home Assistant selector config is partly runtime shape and partly frontend UI
+    metadata. This applies safe JSON Schema constraints and preserves the full
+    HA config under ``x-ha-selector-config`` for callers that need the original
+    details.
+    """
+    base_schema = get_selector_schema(selector_type)
+    if base_schema is None:
+        return None
+
+    schema = copy.deepcopy(base_schema)
+    if not isinstance(selector_config, Mapping):
+        return schema
+
+    config = dict(selector_config)
+    if config:
+        schema["x-ha-selector-config"] = copy.deepcopy(config)
+
+    if selector_type in {"number", "color_temp"}:
+        _apply_numeric_config(schema, config)
+    elif selector_type == "select":
+        _apply_select_config(schema, config)
+    elif selector_type == "constant":
+        _apply_constant_config(schema, config)
+
+    if filter_config := config.get("filter"):
+        schema["x-ha-filter"] = copy.deepcopy(filter_config)
+
+    if selector_type in {"area", "device", "entity", "floor", "label", "select"}:
+        _apply_multiple_config(schema, config)
+
+    return schema
+
+
+def _apply_numeric_config(schema: dict[str, Any], config: dict[object, object]) -> None:
+    """Apply numeric selector config as JSON Schema constraints."""
+    if isinstance(config.get("min"), int | float):
+        schema["minimum"] = config["min"]
+    if isinstance(config.get("max"), int | float):
+        schema["maximum"] = config["max"]
+
+    step = config.get("step")
+    if isinstance(step, int | float) and step > 0:
+        schema["multipleOf"] = step
+
+    unit = config.get("unit_of_measurement", config.get("unit"))
+    if isinstance(unit, str):
+        schema["x-ha-unit-of-measurement"] = unit
+
+
+def _apply_select_config(schema: dict[str, Any], config: dict[object, object]) -> None:
+    """Apply select options when they form a closed set."""
+    options = config.get("options")
+    if not isinstance(options, list):
+        return
+
+    schema["x-ha-options"] = copy.deepcopy(options)
+    values: list[object] = []
+    for option in options:
+        if isinstance(option, str | int | float | bool):
+            values.append(option)
+        elif isinstance(option, Mapping) and "value" in option:
+            values.append(option["value"])
+        else:
+            return
+
+    if values and not config.get("custom_value", False):
+        schema["enum"] = values
+
+
+def _apply_constant_config(
+    schema: dict[str, Any], config: dict[object, object]
+) -> None:
+    """Apply constant selector value."""
+    if "value" not in config:
+        return
+
+    value = config["value"]
+    schema["const"] = value
+    json_type = _json_type(value)
+    if json_type is not None:
+        schema["type"] = json_type
+
+
+def _apply_multiple_config(
+    schema: dict[str, Any], config: dict[object, object]
+) -> None:
+    """Convert scalar selector output to an array when HA allows multiples."""
+    if config.get("multiple") is not True or schema.get("type") == "array":
+        return
+
+    item_schema = copy.deepcopy(schema)
+    description = schema.get("description")
+    schema.clear()
+    schema["type"] = "array"
+    schema["items"] = item_schema
+    if isinstance(description, str):
+        schema["description"] = f"List of {description[:1].lower()}{description[1:]}"
+
+    for key in (
+        "x-selector-type",
+        "x-ha-selector-config",
+        "x-ha-options",
+        "x-ha-filter",
+    ):
+        if key in item_schema:
+            schema[key] = copy.deepcopy(item_schema[key])
+
+
+def _json_type(value: object) -> str | None:
+    """Return the JSON Schema type name for a Python value."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int | float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    if value is None:
+        return "null"
+    return None
 
 
 def get_selector_list_schema() -> dict[str, Any]:

@@ -309,6 +309,23 @@ class TestCallTool:
         assert isinstance(result, Done)
         text = result.result.content[0].text  # type: ignore[union-attr]
         assert "brightness" in text
+        assert "arguments.data" in text
+
+    def test_schema_target_only_service_fields(self) -> None:
+        registry = GroupRegistry()
+        group = ServicesGroup.create({"homeassistant": {"turn_on": {"target": None}}})
+        registry.register(group)
+        result = call_tool(
+            "schema",
+            {"path": "services/homeassistant.turn_on"},
+            registry,
+            user_id=None,
+            resources=(),
+        )
+        assert isinstance(result, Done)
+        text = result.result.content[0].text  # type: ignore[union-attr]
+        assert "has no parameters" not in text
+        assert "arguments.target" in text
 
     def test_schema_unknown_path_error(self) -> None:
         registry = self._make_registry()
