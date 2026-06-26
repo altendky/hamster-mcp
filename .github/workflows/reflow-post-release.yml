@@ -93,39 +93,60 @@ jobs:
             -f ref="refs/heads/$branch" \
             -f sha="$base_sha"
 
-          # Build additions array dynamically from changed files
-          additions="[]"
-          while IFS= read -r file; do
-            base64 -w0 < "$file" > "$RUNNER_TEMP/file.b64"
-            additions=$(jq \
-              --arg path "$file" \
-              --rawfile contents "$RUNNER_TEMP/file.b64" \
-              '. + [{path: $path, contents: $contents}]' <<< "$additions")
-          done < <(git diff --name-only)
+          # Create commit via GraphQL (GitHub signs commits created through this mutation).
+          # Build the request body in a file so large base64 contents (uv.lock) never
+          # pass through shell arguments and hit ARG_MAX.
+          GRAPHQL_INPUT="$RUNNER_TEMP/graphql.json" \
+          GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+          POST_RELEASE_BRANCH="$branch" \
+          POST_RELEASE_MESSAGE="Start ${dev_version} development" \
+          POST_RELEASE_HEAD="$base_sha" \
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
 
-          # Create commit via GraphQL (GitHub signs commits created through this mutation)
-          response=$(jq -n \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg branch "$branch" \
-            --arg msg "Start ${dev_version} development" \
-            --arg head "$base_sha" \
-            --argjson additions "$additions" \
-            '{
-              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
-              variables: {
-                input: {
-                  branch: {
-                    repositoryNameWithOwner: $repo,
-                    branchName: $branch
-                  },
-                  message: { headline: $msg },
-                  fileChanges: {
-                    additions: $additions
-                  },
-                  expectedHeadOid: $head
-                }
+          changed_files = subprocess.run(
+              ["git", "diff", "--name-only"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.splitlines()
+
+          additions = [
+              {
+                  "path": path,
+                  "contents": base64.b64encode(Path(path).read_bytes()).decode(),
               }
-            }' | gh api graphql --input -)
+              for path in changed_files
+          ]
+
+          payload = {
+              "query": (
+                  "mutation($input: CreateCommitOnBranchInput!) { "
+                  "createCommitOnBranch(input: $input) { commit { oid } } }"
+              ),
+              "variables": {
+                  "input": {
+                      "branch": {
+                          "repositoryNameWithOwner": os.environ["GITHUB_REPOSITORY"],
+                          "branchName": os.environ["POST_RELEASE_BRANCH"],
+                      },
+                      "message": {
+                          "headline": os.environ["POST_RELEASE_MESSAGE"],
+                      },
+                      "fileChanges": {"additions": additions},
+                      "expectedHeadOid": os.environ["POST_RELEASE_HEAD"],
+                  }
+              },
+          }
+
+          Path(os.environ["GRAPHQL_INPUT"]).write_text(json.dumps(payload))
+          PY
+
+          response=$(gh api graphql --input "$RUNNER_TEMP/graphql.json")
 
           commit_sha=$(echo "$response" | jq -r '.data.createCommitOnBranch.commit.oid // empty')
 
