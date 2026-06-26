@@ -244,21 +244,47 @@ def _make_error(message: str) -> Done:
     )
 
 
+# Commands that produce events / subscriptions or represent connection-level
+# lifecycle behavior (feature negotiation, side-effectful event firing) rather
+# than request/response command data. These are filtered regardless of name
+# pattern.
+_EXPLICITLY_FILTERED_COMMANDS: frozenset[str] = frozenset(
+    {
+        # Event-producing: registers a long-lived listener and emits event
+        # messages through send_message. The internal adapter only captures
+        # the first result and raises on subsequent event messages.
+        "render_template",
+        # Calls connection.set_supported_features for feature negotiation.
+        # This is a connection-lifecycle concern, not a request/response.
+        "supported_features",
+        # Fires an arbitrary event onto the bus. Not a read-only query, and
+        # not something we want to expose through the MCP surface.
+        "fire_event",
+    }
+)
+
+
 def _is_filtered_command(command_type: str) -> bool:
     """Check if a command should be filtered out.
 
     Filters:
-    - Commands starting with "subscribe" or "unsubscribe"
-    - Commands starting with "auth" or "auth/"
+    - Commands containing ``subscribe`` or ``unsubscribe`` anywhere in the
+      path (covers both ``subscribe_events`` and ``trigger_platforms/subscribe``).
+    - Commands starting with ``auth`` or ``auth/``.
+    - Explicitly listed event-producing or connection-lifecycle commands
+      (see ``_EXPLICITLY_FILTERED_COMMANDS``).
     """
     lower = command_type.lower()
 
-    # Filter subscription commands
-    if lower.startswith(("subscribe", "unsubscribe")):
+    # Filter subscription commands wherever the keyword appears in the path.
+    if "subscribe" in lower or "unsubscribe" in lower:
         return True
 
     # Filter auth commands
-    return lower == "auth" or lower.startswith("auth/")
+    if lower == "auth" or lower.startswith("auth/"):
+        return True
+
+    return lower in _EXPLICITLY_FILTERED_COMMANDS
 
 
 # --- HassGroup ---
@@ -518,10 +544,23 @@ def discover_commands(
     """
     commands: dict[str, CommandInfo] = {}
 
-    for command_type, (_handler, schema) in websocket_api_registry.items():
+    for command_type, entry in websocket_api_registry.items():
         # Filter out subscription and auth commands
         if _is_filtered_command(command_type):
             continue
+
+        # Guard against HA internal registry shape drift. The current shape
+        # is ``(handler, schema_or_False)`` but this is private HA state, so
+        # we defensively skip entries that no longer match.
+        unpacked = _unpack_handler_entry(entry)
+        if unpacked is None:
+            _LOGGER.debug(
+                "Skipping websocket command %s: unexpected registry shape %r",
+                command_type,
+                type(entry).__name__,
+            )
+            continue
+        _handler, schema = unpacked
 
         # Convert schema
         schema_desc = voluptuous_to_description(schema)
@@ -533,3 +572,21 @@ def discover_commands(
         )
 
     return commands
+
+
+def _unpack_handler_entry(
+    entry: object,
+) -> tuple[Any, Any] | None:
+    """Defensively unpack a ``hass.data["websocket_api"]`` registry entry.
+
+    The current HA shape is ``(handler, schema_or_False)``. Returns the
+    ``(handler, schema)`` tuple if the entry matches that shape, or ``None``
+    otherwise so callers can skip / surface a clean error instead of raising
+    ``ValueError`` from tuple unpacking.
+    """
+    if not isinstance(entry, tuple) or len(entry) != 2:
+        return None
+    handler, schema = entry
+    if not callable(handler):
+        return None
+    return handler, schema

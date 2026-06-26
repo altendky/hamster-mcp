@@ -5,12 +5,16 @@ Tests for InternalConnection and execute_hass_command() in the effect handler.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
 
 from hamster_mcp.component.http import HamsterEffectHandler, InternalConnection
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 @pytest.fixture(autouse=True)
@@ -736,7 +740,12 @@ class TestExecuteHassCommandParams:
     async def test_params_passed_to_handler(
         self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
     ) -> None:
-        """Parameters are passed to the handler in the message."""
+        """Parameters are passed to the handler in the message.
+
+        Uses a schema that accepts extra params --- with ``schema=False``,
+        extra params are now rejected to match HA's WebSocket connection
+        behavior (see ``test_schema_false_rejects_extra_params``).
+        """
         captured_msg = None
 
         def capture_handler(
@@ -746,7 +755,15 @@ class TestExecuteHassCommandParams:
             captured_msg = msg
             conn.send_result(msg["id"], None)  # type: ignore[arg-type]
 
-        mock_hass.data = {"websocket_api": {"test_command": (capture_handler, False)}}
+        schema = vol.Schema(
+            {
+                vol.Required("id"): int,
+                vol.Required("type"): str,
+                vol.Required("entity_id"): str,
+                vol.Required("extra"): int,
+            }
+        )
+        mock_hass.data = {"websocket_api": {"test_command": (capture_handler, schema)}}
 
         await effect_handler.execute_hass_command(
             command_type="test_command",
@@ -759,3 +776,453 @@ class TestExecuteHassCommandParams:
         assert captured_msg["entity_id"] == "light.living_room"
         assert captured_msg["extra"] == 123
         assert "id" in captured_msg  # Message ID is added
+
+
+class TestExecuteHassCommandSchemaFalseExtraKeys:
+    """Tests that ``schema is False`` rejects extra parameters.
+
+    Mirrors HA's ``ActiveConnection.async_handle`` behavior of raising
+    ``vol.Invalid("extra keys not allowed")`` when a no-schema command
+    receives anything beyond ``id`` and ``type``.
+    """
+
+    async def test_schema_false_rejects_extra_params(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """schema=False with extra params returns a validation error."""
+        handler = MagicMock()
+        mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={"extra": 123},
+            user_id=None,
+        )
+
+        assert result.success is False
+        assert "extra keys not allowed" in (result.error or "")
+        handler.assert_not_called()
+
+    async def test_schema_false_no_params_succeeds(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """schema=False with no extra params executes normally."""
+
+        def sync_handler(
+            hass: MagicMock, conn: InternalConnection, msg: dict[str, object]
+        ) -> None:
+            conn.send_result(msg["id"], {"states": []})  # type: ignore[arg-type]
+
+        mock_hass.data = {"websocket_api": {"get_states": (sync_handler, False)}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id=None,
+        )
+
+        assert result.success is True
+        assert result.data == {"states": []}
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_keys"),
+    [
+        ({"id": 99}, "['id']"),
+        ({"type": "get_states"}, "['type']"),
+        ({"id": 99, "type": "anything"}, "['id', 'type']"),
+    ],
+)
+async def test_execute_hass_command_schema_false_rejects_reserved_params(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+    params: dict[str, object],
+    expected_keys: str,
+) -> None:
+    """schema=False treats reserved envelope fields as invalid params."""
+    handler = MagicMock()
+    mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_states",
+        params=params,
+        user_id=None,
+    )
+
+    assert result.success is False
+    assert f"reserved keys not allowed: {expected_keys}" in (result.error or "")
+    handler.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_keys"),
+    [
+        ({"entity_id": "light.living_room", "id": 99}, "['id']"),
+        ({"entity_id": "light.living_room", "type": "get_entity"}, "['type']"),
+    ],
+)
+async def test_execute_hass_command_schema_rejects_reserved_params(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+    params: dict[str, object],
+    expected_keys: str,
+) -> None:
+    """Schema-backed commands also reject caller-supplied envelope fields."""
+    handler = MagicMock()
+    schema = vol.Schema(
+        {
+            vol.Required("id"): int,
+            vol.Required("type"): str,
+            vol.Required("entity_id"): str,
+        }
+    )
+    mock_hass.data = {"websocket_api": {"get_entity": (handler, schema)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_entity",
+        params=params,
+        user_id=None,
+    )
+
+    assert result.success is False
+    assert f"reserved keys not allowed: {expected_keys}" in (result.error or "")
+    handler.assert_not_called()
+
+
+class TestExecuteHassCommandUnknownUser:
+    """Tests rejection of unknown / invalid user_id."""
+
+    async def test_unknown_user_id_returns_error(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """An unresolvable user_id fails before the handler runs."""
+        mock_hass.auth.async_get_user.return_value = None
+        handler = MagicMock()
+        mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id="deleted-user",
+        )
+
+        assert result.success is False
+        assert "Unknown user" in (result.error or "")
+        # Handler must not have executed --- the invalid user_id must not
+        # silently fall through as anonymous.
+        handler.assert_not_called()
+
+
+async def test_execute_hass_command_empty_user_id_returns_error(
+    effect_handler: HamsterEffectHandler,
+    mock_hass: MagicMock,
+) -> None:
+    """An empty string user_id is a provided but unknown user."""
+    mock_hass.auth.async_get_user.return_value = None
+    handler = MagicMock()
+    mock_hass.data = {"websocket_api": {"get_states": (handler, False)}}
+
+    result = await effect_handler.execute_hass_command(
+        command_type="get_states",
+        params={},
+        user_id="",
+    )
+
+    assert result.success is False
+    assert "Unknown user" in (result.error or "")
+    mock_hass.auth.async_get_user.assert_called_once_with("")
+    handler.assert_not_called()
+
+
+class TestExecuteHassCommandRegistryShape:
+    """Tests defensive handling of unexpected websocket_api registry shapes."""
+
+    async def test_non_tuple_registry_entry_returns_error(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """A non-tuple entry surfaces a clean error, not a ValueError."""
+        mock_hass.data = {"websocket_api": {"get_states": "not-a-tuple"}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id=None,
+        )
+
+        assert result.success is False
+        assert "Unsupported websocket_api registry entry" in (result.error or "")
+
+    async def test_wrong_arity_registry_entry_returns_error(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """A tuple of wrong arity surfaces a clean error."""
+        mock_hass.data = {
+            "websocket_api": {"get_states": (MagicMock(), False, "extra")}
+        }
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id=None,
+        )
+
+        assert result.success is False
+        assert "Unsupported websocket_api registry entry" in (result.error or "")
+
+    async def test_non_callable_handler_returns_error(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """A non-callable handler element surfaces a clean error."""
+        mock_hass.data = {"websocket_api": {"get_states": ("not-callable", False)}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id=None,
+        )
+
+        assert result.success is False
+        assert "Unsupported websocket_api registry entry" in (result.error or "")
+
+
+class TestInternalConnectionContract:
+    """Tests that InternalConnection honors HA's ActiveConnection contract."""
+
+    def test_set_supported_features_updates_state(self) -> None:
+        """set_supported_features updates supported_features and can_coalesce."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        assert conn.supported_features == {}
+        assert conn.can_coalesce is False
+
+        conn.set_supported_features({"coalesce_messages": 1.0})
+
+        assert conn.supported_features == {"coalesce_messages": 1.0}
+        assert conn.can_coalesce is True
+
+    def test_set_supported_features_without_coalesce(self) -> None:
+        """can_coalesce stays False when coalesce_messages is not advertised."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.set_supported_features({"other_feature": 2.0})
+
+        assert conn.supported_features == {"other_feature": 2.0}
+        assert conn.can_coalesce is False
+
+    def test_connection_contract_attributes(self) -> None:
+        """InternalConnection exposes the lifecycle attributes HA expects."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        # These attributes exist on HA's ActiveConnection; handlers may
+        # touch them even though the internal path does not use them.
+        assert conn.subscriptions == {}
+        assert conn.supported_features == {}
+        assert conn.can_coalesce is False
+        assert conn.last_id == 0
+        assert conn.refresh_token_id is None
+
+
+class TestInternalConnectionSerialization:
+    """Tests for HA-extension serialization through send_result."""
+
+    def test_send_result_serializes_set(self) -> None:
+        """send_result converts a set in the result to a list."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.send_result(1, {"items": {"a", "b", "c"}})
+
+        assert conn.result is not None
+        assert isinstance(conn.result, dict)
+        items = conn.result["items"]
+        assert isinstance(items, list)
+        assert sorted(items) == ["a", "b", "c"]
+
+    def test_send_result_serializes_tuple(self) -> None:
+        """send_result converts a tuple in the result to a list."""
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.send_result(1, {"items": ("a", "b")})
+
+        assert conn.result == {"items": ["a", "b"]}
+
+    def test_send_result_serializes_datetime(self) -> None:
+        """send_result converts datetime objects to ISO format strings."""
+        import datetime
+
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        ts = datetime.datetime(2025, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
+        conn.send_result(1, {"when": ts})
+
+        assert conn.result is not None
+        assert isinstance(conn.result, dict)
+        when = conn.result["when"]
+        # orjson and our HA-style default may both stringify datetimes;
+        # the contract is "JSON-safe string", not exact format.
+        assert isinstance(when, str)
+        assert when.startswith("2025-01-02")
+
+    def test_send_result_serializes_path(self) -> None:
+        """send_result converts pathlib.Path objects to posix strings.
+
+        Matches HA's ``json_encoder_default``, which uses
+        ``isinstance(obj, Path)``.
+        """
+        from pathlib import Path
+
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.send_result(1, {"path": Path("/etc/hass")})
+
+        assert conn.result == {"path": "/etc/hass"}
+
+    def test_send_result_uses_json_fragment_attribute(self) -> None:
+        """send_result inlines objects exposing a json_fragment attribute."""
+        import orjson
+
+        class FragmentHolder:
+            json_fragment = orjson.Fragment(b'{"hello": "world"}')
+
+        hass = MagicMock()
+        conn = InternalConnection(hass, None)
+
+        conn.send_result(1, {"payload": FragmentHolder()})
+
+        assert conn.result == {"payload": {"hello": "world"}}
+
+
+@pytest.fixture
+def hass_with_websocket_registry(hass: HomeAssistant) -> HomeAssistant:
+    """Populate ``hass.data["websocket_api"]`` with HA's real command registry.
+
+    Bypasses ``async_setup`` (which requires ``hass.http`` registration) by
+    directly running ``async_register_commands`` against an in-memory dict.
+    This exercises the real handler+schema entries shipped by HA, not
+    hand-rolled tuples.
+    """
+    from homeassistant.components.websocket_api import commands, const
+
+    registry: dict[str, object] = {}
+    hass.data[const.DOMAIN] = registry
+
+    def register(
+        h: HomeAssistant,
+        command_or_handler: object,
+        handler: object = None,
+        schema: object = None,
+    ) -> None:
+        if handler is None:
+            handler = command_or_handler
+            command = handler._ws_command  # type: ignore[attr-defined]
+            schema = handler._ws_schema  # type: ignore[attr-defined]
+        else:
+            command = command_or_handler
+        registry[command] = (handler, schema)
+
+    commands.async_register_commands(hass, register)
+    return hass
+
+
+@pytest.fixture
+async def admin_user_id(hass: HomeAssistant) -> str:
+    """Create an admin user and return its id.
+
+    Many real HA websocket handlers (e.g. get_states) inspect
+    ``connection.user.is_admin``, so we need a real user --- not None ---
+    to drive them.
+    """
+    admin_group = await hass.auth.async_get_group("system-admin")
+    assert admin_group is not None, "system-admin group must be available in test hass"
+    user = await hass.auth.async_create_user("admin", group_ids=[admin_group.id])
+    return user.id
+
+
+class TestRealHARegistry:
+    """Integration tests against HA's real WebSocket command registry.
+
+    These tests use the actual handlers and schemas shipped by HA rather
+    than hand-rolled mocks, so they detect drift in HA's private contract.
+    """
+
+    async def test_get_states_success(
+        self,
+        hass_with_websocket_registry: HomeAssistant,
+        admin_user_id: str,
+    ) -> None:
+        """get_states succeeds against the real handler and returns a list."""
+        handler = HamsterEffectHandler(hass_with_websocket_registry)
+
+        result = await handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id=admin_user_id,
+        )
+
+        assert result.success is True
+        # get_states returns a list of state dicts (possibly empty in a fresh
+        # test hass).
+        assert isinstance(result.data, list)
+
+    async def test_get_states_rejects_extra_params(
+        self,
+        hass_with_websocket_registry: HomeAssistant,
+        admin_user_id: str,
+    ) -> None:
+        """get_states (schema=False) rejects extra params, matching HA."""
+        handler = HamsterEffectHandler(hass_with_websocket_registry)
+
+        result = await handler.execute_hass_command(
+            command_type="get_states",
+            params={"entity_id": "light.living_room"},
+            user_id=admin_user_id,
+        )
+
+        assert result.success is False
+        assert "extra keys not allowed" in (result.error or "")
+
+    async def test_supported_features_filtered(
+        self, hass_with_websocket_registry: HomeAssistant
+    ) -> None:
+        """supported_features is filtered out at the HassGroup layer.
+
+        Direct invocation via ``execute_hass_command`` would still try to
+        call ``set_supported_features`` on the InternalConnection (which we
+        now support), but the user-facing surface (HassGroup.has_command)
+        rejects it so it cannot be reached from MCP.
+        """
+        from hamster_mcp.mcp._core.hass_group import (
+            HassGroup,
+            discover_commands,
+        )
+
+        registry = hass_with_websocket_registry.data["websocket_api"]
+        commands = discover_commands(registry)
+        group = HassGroup.create(commands)
+
+        assert group.has_command("supported_features") is False
+        assert group.has_command("render_template") is False
+        assert group.has_command("fire_event") is False
+        # Sanity: a normal command is still available.
+        assert group.has_command("get_states") is True
+
+    async def test_unknown_user_rejected_against_real_registry(
+        self, hass_with_websocket_registry: HomeAssistant
+    ) -> None:
+        """An invalid user_id is rejected before the real handler runs."""
+        handler = HamsterEffectHandler(hass_with_websocket_registry)
+
+        result = await handler.execute_hass_command(
+            command_type="get_states",
+            params={},
+            user_id="does-not-exist",
+        )
+
+        assert result.success is False
+        assert "Unknown user" in (result.error or "")
