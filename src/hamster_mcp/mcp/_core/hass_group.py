@@ -244,10 +244,10 @@ def _make_error(message: str) -> Done:
     )
 
 
-# Commands that produce events / subscriptions or require connection-level
-# behavior (set_supported_features, feature negotiation, side-effectful event
-# firing) that the internal adapter does not implement. These are filtered
-# regardless of name pattern.
+# Commands that produce events / subscriptions or represent connection-level
+# lifecycle behavior (feature negotiation, side-effectful event firing) rather
+# than request/response command data. These are filtered regardless of name
+# pattern.
 _EXPLICITLY_FILTERED_COMMANDS: frozenset[str] = frozenset(
     {
         # Event-producing: registers a long-lived listener and emits event
