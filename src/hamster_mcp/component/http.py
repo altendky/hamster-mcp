@@ -458,6 +458,8 @@ class HamsterEffectHandler:
         path: str,
         params: dict[str, object],
         user_id: str | None,
+        *,
+        returns_text: bool = False,
     ) -> SupervisorCallResult:
         """Execute a Supervisor API call.
 
@@ -466,6 +468,8 @@ class HamsterEffectHandler:
             path: API path (e.g. '/core/logs')
             params: Query params (GET) or body (POST)
             user_id: Authenticated user ID for authorization
+            returns_text: True for endpoints that return plain text (e.g. logs).
+                Determined by the endpoint definition, not inferred from the path.
 
         Returns:
             SupervisorCallResult indicating success or failure
@@ -496,17 +500,33 @@ class HamsterEffectHandler:
         if hassio is None:
             return SupervisorCallResult(success=False, error="Supervisor not available")
 
-        try:
-            # Determine if this returns text (logs) or JSON
-            returns_text = path.endswith("/logs")
+        # Split params between request body (for write methods) and query
+        # string (for read methods). Sending both would be ambiguous, so we
+        # pick exactly one based on the HTTP method.
+        method_upper = method.upper()
+        is_write = method_upper in ("POST", "PUT", "PATCH", "DELETE")
+        send_payload = params if is_write else None
+        send_params = None if is_write else (params or None)
 
-            # Use the hassio client to make the API call
+        try:
+            # Use the hassio client to make the API call. The send_command
+            # signature accepts a `params` kwarg for query parameters; pass
+            # GET-style arguments there so they reach the Supervisor instead
+            # of being silently dropped.
+            #
+            # Bound the timeout instead of passing None: the Supervisor's
+            # streaming /logs/follow variants never close on their own, and
+            # aiohttp.ClientTimeout(total=None) would block the call forever.
+            # 300 seconds is generous for large log retrievals while keeping
+            # streaming endpoints from holding an MCP request open
+            # indefinitely.
             result = await hassio.send_command(
                 path,
                 method=method.lower(),
-                payload=params if method.upper() in ("POST", "PUT", "PATCH") else None,
-                timeout=None,
+                payload=send_payload,
+                timeout=300,
                 return_text=returns_text,
+                params=send_params,
             )
 
             if returns_text:

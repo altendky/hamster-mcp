@@ -278,6 +278,27 @@ class TestSupervisorGroupParseCallArgs:
         assert isinstance(result, SupervisorCall)
         assert result.params == {"lines": 100}
 
+    def test_returns_text_propagated_from_endpoint(self) -> None:
+        """The returns_text flag on the endpoint flows into the effect.
+
+        The transport relies on this flag instead of inferring text vs JSON
+        from path suffixes, so the endpoint definition is the source of
+        truth.
+        """
+        group = SupervisorGroup.create(available=True)
+
+        text_effect = group.parse_call_args("core/logs", {}, user_id=None)
+        assert isinstance(text_effect, SupervisorCall)
+        assert text_effect.returns_text is True
+
+        json_effect = group.parse_call_args("core/info", {}, user_id=None)
+        assert isinstance(json_effect, SupervisorCall)
+        assert json_effect.returns_text is False
+
+        follow_effect = group.parse_call_args("core/logs/follow", {}, user_id=None)
+        assert isinstance(follow_effect, SupervisorCall)
+        assert follow_effect.returns_text is True
+
 
 class TestEndpointInfo:
     """Tests for EndpointInfo dataclass."""
@@ -304,17 +325,54 @@ class TestEndpointInfo:
                 )
 
     def test_log_endpoints_return_text(self) -> None:
-        """Log endpoints have returns_text=True."""
+        """Endpoints that stream Systemd journal output have returns_text=True.
+
+        Endpoints whose key ends with ``/logs`` or contains ``/logs/follow``,
+        ``/logs/latest``, or ``/logs/boots/{bootid}`` return plain text and
+        must declare returns_text=True. Sibling endpoints under ``/logs/``
+        like ``/host/logs/identifiers`` and ``/host/logs/boots`` are
+        intentionally excluded because they return JSON listings, not log
+        text.
+        """
+        text_log_suffixes = (
+            "/logs",
+            "/logs/follow",
+            "/logs/latest",
+        )
         for path, info in SUPERVISOR_ENDPOINTS.items():
-            if "logs" in path:
+            api_path = info.path
+            is_text_log = (
+                any(api_path.endswith(suffix) for suffix in text_log_suffixes)
+                or "/logs/boots/{bootid}" in api_path
+            )
+            if is_text_log:
                 assert info.returns_text is True, (
                     f"Log endpoint '{path}' should have returns_text=True"
+                )
+
+    def test_non_log_endpoints_return_json(self) -> None:
+        """Endpoints that aren't log streams must return JSON."""
+        text_log_suffixes = ("/logs", "/logs/follow", "/logs/latest")
+        text_endpoints_with_other_paths = {
+            "addons/{slug}/changelog",
+            "addons/{slug}/documentation",
+        }
+        for path, info in SUPERVISOR_ENDPOINTS.items():
+            api_path = info.path
+            is_text = (
+                any(api_path.endswith(suffix) for suffix in text_log_suffixes)
+                or "/logs/boots/{bootid}" in api_path
+                or path in text_endpoints_with_other_paths
+            )
+            if not is_text:
+                assert info.returns_text is False, (
+                    f"Endpoint '{path}' should return JSON (returns_text=False)"
                 )
 
     def test_info_endpoints_return_json(self) -> None:
         """Info endpoints have returns_text=False (JSON)."""
         for path, info in SUPERVISOR_ENDPOINTS.items():
-            if "info" in path:
+            if path.endswith("/info") or "/info" in info.path:
                 assert info.returns_text is False, (
                     f"Info endpoint '{path}' should return JSON (returns_text=False)"
                 )
@@ -345,12 +403,25 @@ class TestEffectTypes:
             params={"lines": 100},
             user_id="user123",
             continuation=FormatSupervisorResponse(),
+            returns_text=True,
         )
         assert effect.method == "GET"
         assert effect.path == "/core/logs"
         assert effect.params == {"lines": 100}
         assert effect.user_id == "user123"
+        assert effect.returns_text is True
         assert isinstance(effect.continuation, FormatSupervisorResponse)
+
+    def test_supervisor_call_returns_text_defaults_false(self) -> None:
+        """returns_text defaults to False for JSON responses."""
+        effect = SupervisorCall(
+            method="GET",
+            path="/core/info",
+            params={},
+            user_id=None,
+            continuation=FormatSupervisorResponse(),
+        )
+        assert effect.returns_text is False
 
     def test_supervisor_call_frozen(self) -> None:
         """SupervisorCall is frozen."""

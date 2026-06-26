@@ -332,6 +332,49 @@ class TestSupervisorGroupFlow:
         assert effect.path == "/core/logs"
         assert effect.method == "GET"
         assert effect.user_id == "test_user"
+        # Endpoint definition declares this as a text response, so the effect
+        # must propagate that flag (rather than relying on path heuristics).
+        assert effect.returns_text is True
+
+        json_effect = supervisor_group.parse_call_args(
+            "core/info", {}, user_id="test_user"
+        )
+        assert isinstance(json_effect, SupervisorCall)
+        assert json_effect.returns_text is False
+
+    async def test_search_matches_apps_and_addons_terminology(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+    ) -> None:
+        """Searching for either "apps" or "add-ons" must surface addon endpoints.
+
+        HA 2026.6 rebranded add-ons to apps in user-facing surfaces; the
+        Supervisor REST paths still use ``/addons``. Descriptions use both
+        terms so search works regardless of which the user types.
+        """
+        with (
+            patch(
+                "hamster_mcp.component.async_get_all_descriptions",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("hamster_mcp.component.is_supervisor_available", return_value=True),
+        ):
+            await hass.config_entries.async_setup(mock_config_entry.entry_id)
+            await hass.async_block_till_done()
+
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
+
+        supervisor_group = manager._registry.get("supervisor")
+        assert supervisor_group is not None
+
+        apps_result = supervisor_group.search("apps")
+        assert "addons" in apps_result
+
+        addons_result = supervisor_group.search("add-on")
+        assert "addons" in addons_result
 
 
 class TestCrossGroupSearch:

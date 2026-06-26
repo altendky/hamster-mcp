@@ -287,6 +287,7 @@ class TestExecuteSupervisorCall:
                 path="/core/logs",
                 params={},
                 user_id="admin-user-123",
+                returns_text=True,
             )
 
         assert result.success is True
@@ -294,6 +295,41 @@ class TestExecuteSupervisorCall:
             "logs": "2024-01-01 INFO Starting...\n2024-01-01 INFO Ready"
         }
         assert result.error is None
+        # Confirm the text-vs-JSON decision came from the explicit
+        # returns_text flag, not from a path heuristic.
+        call_kwargs = mock_hassio.send_command.call_args.kwargs
+        assert call_kwargs["return_text"] is True
+
+    async def test_returns_text_for_non_logs_suffix(
+        self,
+        effect_handler: HamsterEffectHandler,
+        mock_hass: MagicMock,
+        mock_admin_user: MagicMock,
+        mock_hassio: MagicMock,
+    ) -> None:
+        """Endpoints like /logs/follow or /addons/.../changelog return text.
+
+        Verifies the call honors the explicit returns_text flag rather than
+        relying on path.endswith("/logs").
+        """
+        mock_hass.auth = MagicMock()
+        mock_hass.auth.async_get_user = AsyncMock(return_value=mock_admin_user)
+        mock_hass.data = {"hassio": mock_hassio}
+        mock_hassio.send_command.return_value = "streaming log line\n"
+
+        with patch.dict("sys.modules", mock_hassio_modules()):
+            result = await effect_handler.execute_supervisor_call(
+                method="GET",
+                path="/core/logs/follow",
+                params={},
+                user_id="admin-user-123",
+                returns_text=True,
+            )
+
+        assert result.success is True
+        assert result.data == {"logs": "streaming log line\n"}
+        call_kwargs = mock_hassio.send_command.call_args.kwargs
+        assert call_kwargs["return_text"] is True
 
     async def test_no_user_id_returns_auth_error(
         self,
@@ -444,7 +480,7 @@ class TestExecuteSupervisorCall:
         mock_admin_user: MagicMock,
         mock_hassio: MagicMock,
     ) -> None:
-        """Test POST method passes params as payload."""
+        """Test POST method passes params as payload (not query string)."""
         mock_hass.auth = MagicMock()
         mock_hass.auth.async_get_user = AsyncMock(return_value=mock_admin_user)
         mock_hass.data = {"hassio": mock_hassio}
@@ -461,3 +497,61 @@ class TestExecuteSupervisorCall:
         mock_hassio.send_command.assert_called_once()
         call_kwargs = mock_hassio.send_command.call_args.kwargs
         assert call_kwargs["payload"] == {"key": "value"}
+        assert call_kwargs["params"] is None
+
+    async def test_get_method_passes_query_params(
+        self,
+        effect_handler: HamsterEffectHandler,
+        mock_hass: MagicMock,
+        mock_admin_user: MagicMock,
+        mock_hassio: MagicMock,
+    ) -> None:
+        """GET requests must forward parameters as a query string.
+
+        Previously these were silently dropped, so endpoints that accept
+        query parameters (e.g. ``lines`` for log endpoints) would ignore
+        client input.
+        """
+        mock_hass.auth = MagicMock()
+        mock_hass.auth.async_get_user = AsyncMock(return_value=mock_admin_user)
+        mock_hass.data = {"hassio": mock_hassio}
+        mock_hassio.send_command.return_value = "log content"
+
+        with patch.dict("sys.modules", mock_hassio_modules()):
+            await effect_handler.execute_supervisor_call(
+                method="GET",
+                path="/core/logs",
+                params={"lines": "100"},
+                user_id="admin-user-123",
+                returns_text=True,
+            )
+
+        mock_hassio.send_command.assert_called_once()
+        call_kwargs = mock_hassio.send_command.call_args.kwargs
+        assert call_kwargs["params"] == {"lines": "100"}
+        assert call_kwargs["payload"] is None
+
+    async def test_get_method_with_empty_params_sends_none(
+        self,
+        effect_handler: HamsterEffectHandler,
+        mock_hass: MagicMock,
+        mock_admin_user: MagicMock,
+        mock_hassio: MagicMock,
+    ) -> None:
+        """GET with no params should not produce an empty query dict."""
+        mock_hass.auth = MagicMock()
+        mock_hass.auth.async_get_user = AsyncMock(return_value=mock_admin_user)
+        mock_hass.data = {"hassio": mock_hassio}
+        mock_hassio.send_command.return_value = {"data": {"ok": True}}
+
+        with patch.dict("sys.modules", mock_hassio_modules()):
+            await effect_handler.execute_supervisor_call(
+                method="GET",
+                path="/core/info",
+                params={},
+                user_id="admin-user-123",
+            )
+
+        call_kwargs = mock_hassio.send_command.call_args.kwargs
+        assert call_kwargs["params"] is None
+        assert call_kwargs["payload"] is None
