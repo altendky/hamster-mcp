@@ -72,8 +72,8 @@ class MockEffectHandler:
     hass_calls: list[tuple[str, dict[str, object], str | None]] = field(
         default_factory=list
     )
-    supervisor_calls: list[tuple[str, str, dict[str, object], str | None]] = field(
-        default_factory=list
+    supervisor_calls: list[tuple[str, str, dict[str, object], str | None, bool]] = (
+        field(default_factory=list)
     )
     result: ServiceCallResult = field(default_factory=_default_service_result)
     hass_result: HassCommandResult = field(default_factory=_default_hass_result)
@@ -118,9 +118,11 @@ class MockEffectHandler:
         path: str,
         params: dict[str, object],
         user_id: str | None,
+        *,
+        returns_text: bool = False,
     ) -> SupervisorCallResult:
         """Execute mock supervisor call."""
-        self.supervisor_calls.append((method, path, params, user_id))
+        self.supervisor_calls.append((method, path, params, user_id, returns_text))
         if self.supervisor_should_raise is not None:
             raise self.supervisor_should_raise
         return self.supervisor_result

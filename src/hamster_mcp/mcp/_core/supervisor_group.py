@@ -41,33 +41,254 @@ class EndpointInfo:
 # --- Endpoint definitions ---
 
 
+# Note on terminology: Home Assistant rebranded "add-ons" to "apps" in 2026.6
+# user-facing surfaces, but the Supervisor REST paths still use `/addons`.
+# Descriptions use "app (add-on)" so search hits work for either term while
+# keeping the legacy name visible to operators familiar with it.
+_APP_SLUG = {"type": "string", "description": "App (add-on) slug"}
+_BOOT_ID = {"type": "string", "description": "Boot identifier"}
+_UUID = {"type": "string", "description": "Discovery service UUID"}
+_BACKUP_SLUG = {"type": "string", "description": "Backup slug"}
+_INTERFACE = {"type": "string", "description": "Network interface name"}
+_JOB_UUID = {"type": "string", "description": "Job UUID"}
+
+
 SUPERVISOR_ENDPOINTS: dict[str, EndpointInfo] = {
-    "core/logs": EndpointInfo(
+    # --- Apps (formerly add-ons) ---
+    "addons": EndpointInfo(
         method="GET",
-        path="/core/logs",
-        description="Get Home Assistant Core logs",
+        path="/addons",
+        description="List installed apps (add-ons)",
+        params_schema={},
+    ),
+    "addons/{slug}/info": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/info",
+        description="Get app (add-on) information",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+    ),
+    "addons/{slug}/stats": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/stats",
+        description="Get app (add-on) resource usage statistics",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+    ),
+    "addons/{slug}/changelog": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/changelog",
+        description="Get app (add-on) changelog",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+        returns_text=True,
+    ),
+    "addons/{slug}/documentation": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/documentation",
+        description="Get app (add-on) documentation",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+        returns_text=True,
+    ),
+    "addons/{slug}/logs": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/logs",
+        description="Get app (add-on) logs from the Systemd journal",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+        returns_text=True,
+    ),
+    "addons/{slug}/logs/follow": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/logs/follow",
+        description="Stream app (add-on) logs (continuous follow)",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+        returns_text=True,
+    ),
+    "addons/{slug}/logs/latest": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/logs/latest",
+        description="Get logs from the latest startup of the app (add-on) container",
+        params_schema={"slug": _APP_SLUG},
+        path_params=("slug",),
+        returns_text=True,
+    ),
+    "addons/{slug}/logs/boots/{bootid}": EndpointInfo(
+        method="GET",
+        path="/addons/{slug}/logs/boots/{bootid}",
+        description="Get app (add-on) logs for a specific boot",
+        params_schema={"slug": _APP_SLUG, "bootid": _BOOT_ID},
+        path_params=("slug", "bootid"),
+        returns_text=True,
+    ),
+    # --- Audio plugin ---
+    "audio/info": EndpointInfo(
+        method="GET",
+        path="/audio/info",
+        description="Get audio plugin information",
+        params_schema={},
+    ),
+    "audio/stats": EndpointInfo(
+        method="GET",
+        path="/audio/stats",
+        description="Get audio plugin resource usage statistics",
+        params_schema={},
+    ),
+    "audio/logs": EndpointInfo(
+        method="GET",
+        path="/audio/logs",
+        description="Get audio plugin logs from the Systemd journal",
         params_schema={},
         returns_text=True,
     ),
+    "audio/logs/follow": EndpointInfo(
+        method="GET",
+        path="/audio/logs/follow",
+        description="Stream audio plugin logs (continuous follow)",
+        params_schema={},
+        returns_text=True,
+    ),
+    "audio/logs/latest": EndpointInfo(
+        method="GET",
+        path="/audio/logs/latest",
+        description="Get logs from the latest startup of the audio plugin container",
+        params_schema={},
+        returns_text=True,
+    ),
+    # --- Backups ---
+    "backups": EndpointInfo(
+        method="GET",
+        path="/backups",
+        description="List backups",
+        params_schema={},
+    ),
+    "backups/info": EndpointInfo(
+        method="GET",
+        path="/backups/info",
+        description="Get backup manager information",
+        params_schema={},
+    ),
+    "backups/{slug}/info": EndpointInfo(
+        method="GET",
+        path="/backups/{slug}/info",
+        description="Get details for a specific backup",
+        params_schema={"slug": _BACKUP_SLUG},
+        path_params=("slug",),
+    ),
+    # --- CLI plugin ---
+    "cli/info": EndpointInfo(
+        method="GET",
+        path="/cli/info",
+        description="Get CLI plugin information",
+        params_schema={},
+    ),
+    "cli/stats": EndpointInfo(
+        method="GET",
+        path="/cli/stats",
+        description="Get CLI plugin resource usage statistics",
+        params_schema={},
+    ),
+    # --- Home Assistant Core ---
     "core/info": EndpointInfo(
         method="GET",
         path="/core/info",
         description="Get Home Assistant Core information",
         params_schema={},
     ),
-    "supervisor/info": EndpointInfo(
+    "core/stats": EndpointInfo(
         method="GET",
-        path="/supervisor/info",
-        description="Get Supervisor information",
+        path="/core/stats",
+        description="Get Home Assistant Core resource usage statistics",
         params_schema={},
     ),
-    "supervisor/logs": EndpointInfo(
+    "core/logs": EndpointInfo(
         method="GET",
-        path="/supervisor/logs",
-        description="Get Supervisor logs",
+        path="/core/logs",
+        description="Get Home Assistant Core logs from the Systemd journal",
         params_schema={},
         returns_text=True,
     ),
+    "core/logs/follow": EndpointInfo(
+        method="GET",
+        path="/core/logs/follow",
+        description="Stream Home Assistant Core logs (continuous follow)",
+        params_schema={},
+        returns_text=True,
+    ),
+    "core/logs/latest": EndpointInfo(
+        method="GET",
+        path="/core/logs/latest",
+        description=(
+            "Get logs from the latest startup of the Home Assistant Core container"
+        ),
+        params_schema={},
+        returns_text=True,
+    ),
+    "core/logs/boots/{bootid}": EndpointInfo(
+        method="GET",
+        path="/core/logs/boots/{bootid}",
+        description="Get Home Assistant Core logs for a specific boot",
+        params_schema={"bootid": _BOOT_ID},
+        path_params=("bootid",),
+        returns_text=True,
+    ),
+    # --- Discovery ---
+    "discovery": EndpointInfo(
+        method="GET",
+        path="/discovery",
+        description="List enabled discovery services from apps (add-ons)",
+        params_schema={},
+    ),
+    "discovery/{uuid}": EndpointInfo(
+        method="GET",
+        path="/discovery/{uuid}",
+        description="Get a specific discovery service by UUID",
+        params_schema={"uuid": _UUID},
+        path_params=("uuid",),
+    ),
+    # --- DNS plugin ---
+    "dns/info": EndpointInfo(
+        method="GET",
+        path="/dns/info",
+        description="Get DNS plugin information",
+        params_schema={},
+    ),
+    "dns/stats": EndpointInfo(
+        method="GET",
+        path="/dns/stats",
+        description="Get DNS plugin resource usage statistics",
+        params_schema={},
+    ),
+    "dns/logs": EndpointInfo(
+        method="GET",
+        path="/dns/logs",
+        description="Get DNS plugin logs from the Systemd journal",
+        params_schema={},
+        returns_text=True,
+    ),
+    "dns/logs/latest": EndpointInfo(
+        method="GET",
+        path="/dns/logs/latest",
+        description="Get logs from the latest startup of the DNS plugin container",
+        params_schema={},
+        returns_text=True,
+    ),
+    # --- Hardware ---
+    "hardware/info": EndpointInfo(
+        method="GET",
+        path="/hardware/info",
+        description="Get hardware information",
+        params_schema={},
+    ),
+    "hardware/audio": EndpointInfo(
+        method="GET",
+        path="/hardware/audio",
+        description="Get audio hardware information",
+        params_schema={},
+    ),
+    # --- Host ---
     "host/info": EndpointInfo(
         method="GET",
         path="/host/info",
@@ -77,42 +298,177 @@ SUPERVISOR_ENDPOINTS: dict[str, EndpointInfo] = {
     "host/logs": EndpointInfo(
         method="GET",
         path="/host/logs",
-        description="Get host system logs",
+        description="Get host system logs from the Systemd journal",
         params_schema={},
         returns_text=True,
     ),
-    "addons": EndpointInfo(
+    "host/logs/follow": EndpointInfo(
         method="GET",
-        path="/addons",
-        description="List installed add-ons",
+        path="/host/logs/follow",
+        description="Stream host system logs (continuous follow)",
         params_schema={},
-    ),
-    "addons/{slug}/info": EndpointInfo(
-        method="GET",
-        path="/addons/{slug}/info",
-        description="Get add-on information",
-        params_schema={"slug": {"type": "string", "description": "Add-on slug"}},
-        path_params=("slug",),
-    ),
-    "addons/{slug}/logs": EndpointInfo(
-        method="GET",
-        path="/addons/{slug}/logs",
-        description="Get add-on logs",
-        params_schema={"slug": {"type": "string", "description": "Add-on slug"}},
-        path_params=("slug",),
         returns_text=True,
     ),
-    "backups": EndpointInfo(
+    "host/logs/latest": EndpointInfo(
         method="GET",
-        path="/backups",
-        description="List backups",
+        path="/host/logs/latest",
+        description="Get logs from the latest boot of the host system",
+        params_schema={},
+        returns_text=True,
+    ),
+    "host/logs/identifiers": EndpointInfo(
+        method="GET",
+        path="/host/logs/identifiers",
+        description="List Systemd journal identifiers available on the host",
         params_schema={},
     ),
+    "host/logs/boots": EndpointInfo(
+        method="GET",
+        path="/host/logs/boots",
+        description="List boot IDs known to the host journal",
+        params_schema={},
+    ),
+    # --- Jobs ---
+    "jobs/info": EndpointInfo(
+        method="GET",
+        path="/jobs/info",
+        description="Get information about Supervisor jobs",
+        params_schema={},
+    ),
+    "jobs/{uuid}": EndpointInfo(
+        method="GET",
+        path="/jobs/{uuid}",
+        description="Get information about a specific Supervisor job",
+        params_schema={"uuid": _JOB_UUID},
+        path_params=("uuid",),
+    ),
+    # --- Mounts ---
+    "mounts": EndpointInfo(
+        method="GET",
+        path="/mounts",
+        description="List configured network mounts",
+        params_schema={},
+    ),
+    # --- Multicast plugin ---
+    "multicast/info": EndpointInfo(
+        method="GET",
+        path="/multicast/info",
+        description="Get multicast plugin information",
+        params_schema={},
+    ),
+    "multicast/stats": EndpointInfo(
+        method="GET",
+        path="/multicast/stats",
+        description="Get multicast plugin resource usage statistics",
+        params_schema={},
+    ),
+    "multicast/logs": EndpointInfo(
+        method="GET",
+        path="/multicast/logs",
+        description="Get multicast plugin logs from the Systemd journal",
+        params_schema={},
+        returns_text=True,
+    ),
+    # --- Network ---
     "network/info": EndpointInfo(
         method="GET",
         path="/network/info",
         description="Get network information",
         params_schema={},
+    ),
+    "network/interface/{interface}/info": EndpointInfo(
+        method="GET",
+        path="/network/interface/{interface}/info",
+        description="Get information about a specific network interface",
+        params_schema={"interface": _INTERFACE},
+        path_params=("interface",),
+    ),
+    # --- Observer plugin ---
+    "observer/info": EndpointInfo(
+        method="GET",
+        path="/observer/info",
+        description="Get observer plugin information",
+        params_schema={},
+    ),
+    "observer/stats": EndpointInfo(
+        method="GET",
+        path="/observer/stats",
+        description="Get observer plugin resource usage statistics",
+        params_schema={},
+    ),
+    # --- Operating system ---
+    "os/info": EndpointInfo(
+        method="GET",
+        path="/os/info",
+        description="Get Home Assistant OS information",
+        params_schema={},
+    ),
+    # --- Resolution center ---
+    "resolution/info": EndpointInfo(
+        method="GET",
+        path="/resolution/info",
+        description="Get resolution center information (issues, suggestions, checks)",
+        params_schema={},
+    ),
+    # --- Services discovery ---
+    "services": EndpointInfo(
+        method="GET",
+        path="/services",
+        description="List services provided by apps (add-ons)",
+        params_schema={},
+    ),
+    # --- Store ---
+    "store": EndpointInfo(
+        method="GET",
+        path="/store",
+        description="Get app (add-on) store overview",
+        params_schema={},
+    ),
+    "store/addons": EndpointInfo(
+        method="GET",
+        path="/store/addons",
+        description="List apps (add-ons) available in the store",
+        params_schema={},
+    ),
+    "store/repositories": EndpointInfo(
+        method="GET",
+        path="/store/repositories",
+        description="List app (add-on) repositories configured in the store",
+        params_schema={},
+    ),
+    # --- Supervisor ---
+    "supervisor/info": EndpointInfo(
+        method="GET",
+        path="/supervisor/info",
+        description="Get Supervisor information",
+        params_schema={},
+    ),
+    "supervisor/stats": EndpointInfo(
+        method="GET",
+        path="/supervisor/stats",
+        description="Get Supervisor resource usage statistics",
+        params_schema={},
+    ),
+    "supervisor/logs": EndpointInfo(
+        method="GET",
+        path="/supervisor/logs",
+        description="Get Supervisor logs from the Systemd journal",
+        params_schema={},
+        returns_text=True,
+    ),
+    "supervisor/logs/follow": EndpointInfo(
+        method="GET",
+        path="/supervisor/logs/follow",
+        description="Stream Supervisor logs (continuous follow)",
+        params_schema={},
+        returns_text=True,
+    ),
+    "supervisor/logs/latest": EndpointInfo(
+        method="GET",
+        path="/supervisor/logs/latest",
+        description="Get logs from the latest startup of the Supervisor container",
+        params_schema={},
+        returns_text=True,
     ),
 }
 
@@ -373,4 +729,5 @@ class SupervisorGroup:
             params=remaining_args,
             user_id=user_id,
             continuation=FormatSupervisorResponse(),
+            returns_text=info.returns_text,
         )

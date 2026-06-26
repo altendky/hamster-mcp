@@ -106,6 +106,8 @@ class EffectHandler(Protocol):
         path: str,
         params: dict[str, object],
         user_id: str | None,
+        *,
+        returns_text: bool = False,
     ) -> SupervisorCallResult:
         """Execute a Supervisor API call.
 
@@ -114,6 +116,7 @@ class EffectHandler(Protocol):
             path: API path (e.g. '/core/logs')
             params: Query params (GET) or body (POST)
             user_id: Authenticated user ID for authorization
+            returns_text: True for endpoints that return plain text (e.g. logs)
 
         Returns:
             SupervisorCallResult indicating success or failure
@@ -308,6 +311,7 @@ class AiohttpMCPTransport:
                             current.path,
                             current.params,
                             current.user_id,
+                            returns_text=current.returns_text,
                         )
                     )
                 except Exception as err:

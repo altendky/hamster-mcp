@@ -99,6 +99,7 @@ class SupervisorCall:
     params: dict[str, object]  # Query params (GET) or body (POST)
     user_id: str | None
     continuation: Continuation
+    returns_text: bool = False  # True for endpoints that return plain text (logs)
 
 
 # ToolEffect union - what call_tool() and resume() return
