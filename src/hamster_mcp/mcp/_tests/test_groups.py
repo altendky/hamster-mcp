@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import pytest
 
 from hamster_mcp.mcp._core.events import Done, FormatServiceResponse, ServiceCall
 from hamster_mcp.mcp._core.groups import GroupRegistry, ServicesGroup, SourceGroup
+
+
+def _parse_json_schema(result: str) -> dict[str, Any]:
+    """Parse the leading JSON schema block from a schema() response."""
+    _prefix, rest = result.split("```json\n", 1)
+    json_block, _suffix = rest.split("\n```", 1)
+    parsed = json.loads(json_block)
+    assert isinstance(parsed, dict)
+    return parsed
+
 
 # --- SourceGroup protocol tests ---
 
@@ -345,6 +358,14 @@ class TestServicesGroupExplain:
         # Check for target schema hint
         assert 'schema("selector/target")' in result
 
+    def test_explain_includes_bare_target(self) -> None:
+        """explain() includes target when HA describes a service with bare target:."""
+        group = ServicesGroup.create({"homeassistant": {"turn_on": {"target": None}}})
+        result = group.explain("homeassistant.turn_on")
+        assert result is not None
+        assert "### Target" in result
+        assert "Accepts target specification" in result
+
 
 class TestServicesGroupSchema:
     """Tests for ServicesGroup.schema()."""
@@ -378,6 +399,119 @@ class TestServicesGroupSchema:
         assert result is not None
         assert "brightness" in result
         assert "required" in result
+
+        schema = _parse_json_schema(result)
+        properties = schema["properties"]
+        assert "data" in properties
+        assert "brightness" in properties["data"]["properties"]
+        assert schema["required"] == ["data"]
+        assert properties["data"]["required"] == ["brightness"]
+
+    def test_schema_target_only_service_includes_target(self) -> None:
+        """schema() includes target for services with target but no data fields."""
+        group = ServicesGroup.create({"homeassistant": {"turn_on": {"target": None}}})
+        result = group.schema("homeassistant.turn_on")
+        assert result is not None
+        assert "has no parameters" not in result
+        assert "arguments.target" in result
+
+        schema = _parse_json_schema(result)
+        properties = schema["properties"]
+        assert "target" in properties
+        assert "data" not in properties
+        assert "entity_id" in properties["target"]["properties"]
+
+    def test_schema_service_preserves_selector_constraints(self) -> None:
+        """schema() merges safe selector config into field JSON Schema."""
+        group = ServicesGroup.create(
+            {
+                "light": {
+                    "turn_on": {
+                        "target": {"entity": {"domain": "light"}},
+                        "fields": {
+                            "brightness_pct": {
+                                "selector": {
+                                    "number": {
+                                        "min": 0,
+                                        "max": 100,
+                                        "unit_of_measurement": "%",
+                                    }
+                                }
+                            },
+                            "effect": {
+                                "selector": {
+                                    "select": {
+                                        "options": ["rainbow", "pulse"],
+                                    }
+                                }
+                            },
+                            "entity_ids": {
+                                "selector": {
+                                    "entity": {
+                                        "multiple": True,
+                                        "filter": {"domain": "light"},
+                                    }
+                                }
+                            },
+                        },
+                    }
+                }
+            }
+        )
+        result = group.schema("light.turn_on")
+        assert result is not None
+        schema = _parse_json_schema(result)
+        assert schema["properties"]["target"]["x-ha-target-config"] == {
+            "entity": {"domain": "light"}
+        }
+        data_properties = schema["properties"]["data"]["properties"]
+
+        brightness = data_properties["brightness_pct"]
+        assert brightness["minimum"] == 0
+        assert brightness["maximum"] == 100
+        assert brightness["x-ha-unit-of-measurement"] == "%"
+
+        effect = data_properties["effect"]
+        assert effect["enum"] == ["rainbow", "pulse"]
+        assert effect["x-ha-options"] == ["rainbow", "pulse"]
+
+        entity_ids = data_properties["entity_ids"]
+        assert entity_ids["type"] == "array"
+        assert entity_ids["items"]["type"] == "string"
+        assert entity_ids["x-ha-filter"] == {"domain": "light"}
+
+    def test_schema_service_flattens_section_fields(self) -> None:
+        """schema() flattens HA section fields into arguments.data."""
+        group = ServicesGroup.create(
+            {
+                "light": {
+                    "turn_on": {
+                        "fields": {
+                            "additional_fields": {
+                                "name": "Additional fields",
+                                "collapsed": True,
+                                "fields": {
+                                    "color_name": {
+                                        "selector": {
+                                            "select": {"options": ["red", "blue"]}
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        result = group.schema("light.turn_on")
+        assert result is not None
+        assert "fields flatten into `arguments.data`" in result
+
+        schema = _parse_json_schema(result)
+        data_properties = schema["properties"]["data"]["properties"]
+        assert "additional_fields" not in data_properties
+        assert data_properties["color_name"]["enum"] == ["red", "blue"]
+        assert data_properties["color_name"]["x-ha-section"] == "Additional fields"
 
     def test_schema_unknown_service(self) -> None:
         """schema() returns None for unknown service."""

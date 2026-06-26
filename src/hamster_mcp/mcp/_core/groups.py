@@ -9,13 +9,15 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 import json
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from .events import Done, FormatServiceResponse, ServiceCall, ToolEffect
 from .selector_schemas import (
     SELECTOR_TYPES,
+    get_configured_selector_schema,
     get_selector_list_schema,
     get_selector_schema,
+    get_target_schema,
 )
 from .types import CallToolResult, TextContent
 
@@ -330,11 +332,12 @@ class ServicesGroup:
 
         # Target config
         target = service_data.get("target")
-        if target:
+        has_target = "target" in service_data
+        if has_target:
             lines.append("")
             lines.append("### Target")
             lines.append('*(use `schema("selector/target")` for full JSON Schema)*')
-            if isinstance(target, dict):
+            if isinstance(target, dict) and target:
                 if entity := target.get("entity"):
                     lines.append(f"- Entity: {entity}")
                 if device := target.get("device"):
@@ -353,7 +356,7 @@ class ServicesGroup:
             self._format_fields(fields, lines, selector_types_used=selector_types_used)
 
         # Schema references section
-        if selector_types_used or target:
+        if selector_types_used or has_target:
             lines.append("")
             lines.append("### Schema References")
             lines.append(
@@ -535,92 +538,217 @@ Use `schema("selector/<type>")` to get the JSON Schema for a specific type."""
     def _format_service_schema(
         self, domain: str, service: str, service_data: dict[str, object]
     ) -> str:
-        """Format service parameters as JSON Schema."""
-        fields = service_data.get("fields")
-        if not isinstance(fields, dict) or not fields:
+        """Format service call arguments as JSON Schema."""
+        raw_fields = service_data.get("fields")
+        fields = cast(
+            "dict[str, object] | None",
+            raw_fields if isinstance(raw_fields, dict) and raw_fields else None,
+        )
+        has_target = "target" in service_data
+
+        if fields is None and not has_target:
             return f"Service {domain}.{service} has no parameters."
 
-        # Build JSON Schema for service parameters
         properties: dict[str, Any] = {}
-        required_fields: list[str] = []
+        required_args: list[str] = []
 
-        for field_name, field_data in fields.items():
-            if not isinstance(field_data, dict):
-                continue
+        if has_target:
+            target_schema = get_target_schema()
+            target_schema["description"] = "Service target. Pass as `arguments.target`."
+            target_config = service_data.get("target")
+            if isinstance(target_config, dict) and target_config:
+                target_schema["x-ha-target-config"] = copy.deepcopy(target_config)
+            properties["target"] = target_schema
 
-            # Skip sections (nested field groups) for now
-            if "fields" in field_data:
-                continue
-
-            is_required = field_data.get("required", False)
-            selector = field_data.get("selector", {})
-            desc = field_data.get("description", "")
-
-            # Determine selector type
-            selector_type = None
-            if isinstance(selector, dict) and selector:
-                selector_keys = list(selector.keys())
-                if selector_keys:
-                    selector_type = selector_keys[0]
-
-            # Build field schema
-            field_schema: dict[str, Any] = {}
-            if selector_type:
-                # Get base schema from selector type
-                base_schema = get_selector_schema(selector_type)
-                if base_schema:
-                    field_schema = copy.deepcopy(base_schema)
-                else:
-                    field_schema["x-selector-type"] = selector_type
-
-            # Override description with service-specific one
-            if isinstance(desc, str) and desc:
-                field_schema["description"] = desc
-
-            properties[field_name] = field_schema
-
-            if is_required:
-                required_fields.append(field_name)
+        if fields is not None:
+            data_schema, required_fields = self._build_service_data_schema(
+                domain, service, fields
+            )
+            properties["data"] = data_schema
+            if required_fields:
+                required_args.append("data")
 
         schema: dict[str, Any] = {
             "type": "object",
+            "description": (
+                f"Arguments for `call` with path `services/{domain}.{service}`. "
+                "Use `target` for what to act on and `data` for service fields."
+            ),
             "properties": properties,
         }
-        if required_fields:
-            schema["required"] = required_fields
+        if required_args:
+            schema["required"] = required_args
 
         json_block = json.dumps(schema, indent=2)
 
         # Build markdown summary
-        markdown_parts = [f"## {domain}.{service} Parameters", ""]
+        markdown_parts = [
+            f"## {domain}.{service} Call Arguments",
+            "",
+            (
+                "Pass this object as the `arguments` value when calling "
+                f"`services/{domain}.{service}`."
+            ),
+            "",
+        ]
 
+        if has_target:
+            markdown_parts.extend(
+                [
+                    "### `arguments.target`",
+                    "",
+                    (
+                        "Service accepts a target object for entities, devices, "
+                        "areas, floors, or labels."
+                    ),
+                    "",
+                ]
+            )
+
+        if fields is not None:
+            markdown_parts.extend(
+                [
+                    "### `arguments.data`",
+                    "",
+                    "Service data fields:",
+                ]
+            )
+            self._format_service_schema_fields(fields, markdown_parts)
+
+        return f"```json\n{json_block}\n```\n\n" + "\n".join(markdown_parts)
+
+    def _build_service_data_schema(
+        self, domain: str, service: str, fields: dict[str, object]
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Build the ``arguments.data`` schema for service fields."""
+        properties: dict[str, Any] = {}
+        required_fields: list[str] = []
+        self._collect_service_field_schemas(fields, properties, required_fields)
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "description": (
+                f"Service data for `{domain}.{service}`. Pass as `arguments.data`."
+            ),
+            "properties": properties,
+        }
+        if required_fields:
+            schema["required"] = required_fields
+        return schema, required_fields
+
+    def _collect_service_field_schemas(
+        self,
+        fields: dict[str, object],
+        properties: dict[str, Any],
+        required_fields: list[str],
+        section: str | None = None,
+    ) -> None:
+        """Collect service field schemas, flattening HA presentation sections."""
         for field_name, field_data in fields.items():
             if not isinstance(field_data, dict):
                 continue
 
-            # Handle sections
+            if "fields" in field_data:
+                nested_fields = field_data.get("fields")
+                section_name = field_data.get("name", field_name)
+                if isinstance(nested_fields, dict):
+                    self._collect_service_field_schemas(
+                        cast("dict[str, object]", nested_fields),
+                        properties,
+                        required_fields,
+                        section_name if isinstance(section_name, str) else field_name,
+                    )
+                continue
+
+            field_schema = self._build_service_field_schema(field_data)
+            if section is not None:
+                field_schema["x-ha-section"] = section
+            properties[field_name] = field_schema
+
+            if field_data.get("required", False):
+                required_fields.append(field_name)
+
+    def _build_service_field_schema(
+        self, field_data: dict[object, object]
+    ) -> dict[str, Any]:
+        """Build a JSON Schema fragment for one HA service field."""
+        selector_type, selector_config = self._selector_type_and_config(
+            field_data.get("selector", {})
+        )
+
+        field_schema: dict[str, Any] = {}
+        if selector_type is not None:
+            selector_schema = get_configured_selector_schema(
+                selector_type, selector_config
+            )
+            if selector_schema is None:
+                field_schema["x-selector-type"] = selector_type
+            else:
+                field_schema = selector_schema
+
+        desc = field_data.get("description", "")
+        if isinstance(desc, str) and desc:
+            field_schema["description"] = desc
+
+        name = field_data.get("name")
+        if isinstance(name, str) and name:
+            field_schema["title"] = name
+
+        if "example" in field_data:
+            field_schema["examples"] = [copy.deepcopy(field_data["example"])]
+        if "default" in field_data:
+            field_schema["default"] = copy.deepcopy(field_data["default"])
+        if filter_config := field_data.get("filter"):
+            field_schema["x-ha-filter"] = copy.deepcopy(filter_config)
+
+        return field_schema
+
+    @staticmethod
+    def _selector_type_and_config(selector: object) -> tuple[str | None, object]:
+        """Return HA selector discriminator and config from a selector object."""
+        if not isinstance(selector, dict) or not selector:
+            return None, {}
+
+        selector_type = next(iter(selector))
+        if not isinstance(selector_type, str):
+            return None, {}
+        return selector_type, selector.get(selector_type, {})
+
+    def _format_service_schema_fields(
+        self, fields: dict[str, object], markdown_parts: list[str], indent: str = ""
+    ) -> None:
+        """Format service fields for the service schema markdown section."""
+        for field_name, field_data in fields.items():
+            if not isinstance(field_data, dict):
+                continue
+
             if "fields" in field_data:
                 section_name = field_data.get("name", field_name)
-                markdown_parts.append(f"**{section_name}** (section)")
+                markdown_parts.append(
+                    f"{indent}- **{section_name}** "
+                    "(section; fields flatten into `arguments.data`)"
+                )
+                nested_fields = field_data.get("fields")
+                if isinstance(nested_fields, dict):
+                    self._format_service_schema_fields(
+                        cast("dict[str, object]", nested_fields),
+                        markdown_parts,
+                        indent + "  ",
+                    )
                 continue
 
             is_required = field_data.get("required", False)
-            selector = field_data.get("selector", {})
+            selector_type, _selector_config = self._selector_type_and_config(
+                field_data.get("selector", {})
+            )
             desc = field_data.get("description", "")
 
-            selector_type = ""
-            if isinstance(selector, dict) and selector:
-                selector_keys = list(selector.keys())
-                if selector_keys:
-                    selector_type = f" [{selector_keys[0]}]"
-
+            selector_info = f" [{selector_type}]" if selector_type is not None else ""
             req_str = " (required)" if is_required else ""
-            line = f"- **{field_name}**{req_str}{selector_type}"
+            line = f"{indent}- **{field_name}**{req_str}{selector_info}"
             if isinstance(desc, str) and desc:
                 line += f": {desc}"
             markdown_parts.append(line)
-
-        return f"```json\n{json_block}\n```\n\n" + "\n".join(markdown_parts)
 
     def has_command(self, path: str) -> bool:
         """Check if a service exists."""
