@@ -26,7 +26,7 @@ is set from `mise.toml` so the orchestrator launches the pinned OpenCode binary
 instead of whatever is first on `PATH`.
 
 Repo-local OpenCode configuration lives in `opencode.json` and defines the
-OpenAI-backed `Delegate` primary agent plus the minimal orchestrator MCP server.
+OpenAI-backed `delegate` primary agent plus the minimal orchestrator MCP server.
 After changing `opencode.json` or files under `.opencode/`, quit and restart
 OpenCode so the updated configuration is loaded.
 

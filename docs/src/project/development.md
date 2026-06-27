@@ -24,7 +24,7 @@ The repository includes minimal OpenCode orchestrator support:
 - `mise.toml` pins OpenCode `1.17.4` and `opencode-orchestrator-mcp` `0.7.3`.
 - `OPENCODE_BINARY` points the orchestrator at the pinned OpenCode binary.
 - `opencode.json` wires only the orchestrator MCP server and defines the
-  OpenAI-backed `Delegate` primary agent.
+  OpenAI-backed `delegate` primary agent.
 
 Restart OpenCode after changing `opencode.json` or files under `.opencode/`.
 This initial setup does not require `agentic-mcp`, Thoughts configuration, or
