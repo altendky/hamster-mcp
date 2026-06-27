@@ -196,7 +196,7 @@ class TestHassGroupExplain:
 
     def test_explain_hides_envelope_fields_and_shows_usage(self) -> None:
         """Explain hides id/type and shows payload-only usage."""
-        import voluptuous as vol
+        vol = pytest.importorskip("voluptuous", reason="voluptuous not installed")
 
         schema = vol.Schema(
             {
@@ -267,7 +267,7 @@ class TestHassGroupSchema:
 
     def test_schema_hides_envelope_fields_and_shows_usage(self) -> None:
         """Schema hides id/type and shows payload-only usage."""
-        import voluptuous as vol
+        vol = pytest.importorskip("voluptuous", reason="voluptuous not installed")
 
         schema = vol.Schema(
             {
