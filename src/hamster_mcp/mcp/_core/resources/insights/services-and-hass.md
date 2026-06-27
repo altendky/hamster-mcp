@@ -114,6 +114,24 @@ execution traces, and querying registries.  For example:
 See the *Reading Configurations* insight document for details on reading
 script and automation definitions.
 
+### WebSocket payloads
+
+For `hass/` WebSocket commands, put only command-specific payload fields in
+`arguments`. Do not include WebSocket envelope fields `id` or `type`; Hamster
+supplies those internally.
+
+For example, registry lookup payload fields go inside `arguments`:
+
+```json
+{
+  "path": "hass/config/entity_registry/get_entries",
+  "arguments": {"entity_ids": ["light.living_room"]}
+}
+```
+
+`hass/render_template` is intentionally not exposed because it produces
+subscription/event messages, which the one-shot call tool does not stream yet.
+
 ## Metadata Comparison
 
 | Capability | `services/` group | `hass/call_service` |
