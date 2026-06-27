@@ -23,7 +23,11 @@ from homeassistant.exceptions import (
 )
 import voluptuous as vol
 
-from hamster_mcp.mcp._core.hass_group import _unpack_handler_entry
+from hamster_mcp.mcp._core.hass_group import (
+    _unpack_handler_entry,
+    format_hass_validation_error,
+    voluptuous_to_description,
+)
 from hamster_mcp.mcp._core.registry_enrichment import (
     AreaInfo,
     DeviceInfo,
@@ -46,6 +50,17 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _hass_validation_error(
+    command_type: str, schema: object, original_error: str
+) -> str:
+    """Format a hass validation error with command payload guidance."""
+    return format_hass_validation_error(
+        command_type,
+        original_error,
+        voluptuous_to_description(schema),
+    )
 
 
 def _orjson_default(obj: object) -> object:
@@ -392,7 +407,11 @@ class HamsterEffectHandler:
         if reserved_keys:
             return HassCommandResult(
                 success=False,
-                error=(f"Validation error: reserved keys not allowed: {reserved_keys}"),
+                error=_hass_validation_error(
+                    command_type,
+                    schema,
+                    f"reserved keys not allowed: {reserved_keys}",
+                ),
             )
 
         # Build message with required fields
@@ -406,14 +425,19 @@ class HamsterEffectHandler:
                 extra = sorted(set(msg) - {"id", "type"})
                 return HassCommandResult(
                     success=False,
-                    error=f"Validation error: extra keys not allowed: {extra}",
+                    error=_hass_validation_error(
+                        command_type,
+                        schema,
+                        f"extra keys not allowed: {extra}",
+                    ),
                 )
         else:
             try:
                 msg = schema(msg)
             except vol.Invalid as err:
                 return HassCommandResult(
-                    success=False, error=f"Validation error: {err}"
+                    success=False,
+                    error=_hass_validation_error(command_type, schema, str(err)),
                 )
 
         # Resolve user_id to User object for authorization checks. An unknown

@@ -194,6 +194,36 @@ class TestHassGroupExplain:
         result = group.explain("unknown")
         assert result is None
 
+    def test_explain_hides_envelope_fields_and_shows_usage(self) -> None:
+        """Explain hides id/type and shows payload-only usage."""
+        import voluptuous as vol
+
+        schema = vol.Schema(
+            {
+                vol.Required("id"): int,
+                vol.Required("type"): str,
+                vol.Required("entity_ids"): [str],
+            }
+        )
+        commands = {
+            "config/entity_registry/get_entries": CommandInfo(
+                command_type="config/entity_registry/get_entries",
+                schema=voluptuous_to_description(schema),
+            )
+        }
+        group = HassGroup.create(commands)
+
+        result = group.explain("config/entity_registry/get_entries")
+
+        assert result is not None
+        assert "entity_ids" in result
+        assert "- **id**" not in result
+        assert "- **type**" not in result
+        assert (
+            'mcp__hamster__call(path="hass/config/entity_registry/get_entries"'
+            in result
+        )
+
 
 class TestHassGroupSchema:
     """Tests for HassGroup.schema()."""
@@ -234,6 +264,33 @@ class TestHassGroupSchema:
         group = HassGroup.create({})
         result = group.schema("unknown")
         assert result is None
+
+    def test_schema_hides_envelope_fields_and_shows_usage(self) -> None:
+        """Schema hides id/type and shows payload-only usage."""
+        import voluptuous as vol
+
+        schema = vol.Schema(
+            {
+                vol.Required("id"): int,
+                vol.Required("type"): str,
+                vol.Required("entity_ids"): [str],
+            }
+        )
+        commands = {
+            "config/entity_registry/get_entries": CommandInfo(
+                command_type="config/entity_registry/get_entries",
+                schema=voluptuous_to_description(schema),
+            )
+        }
+        group = HassGroup.create(commands)
+
+        result = group.schema("config/entity_registry/get_entries")
+
+        assert result is not None
+        assert "- **entity_ids** (required) - type: array" in result
+        assert "- **id**" not in result
+        assert "- **type**" not in result
+        assert 'arguments={"entity_ids": ["<value>"]}' in result
 
 
 class TestHassGroupHasCommand:
@@ -339,6 +396,21 @@ class TestHassGroupParseCallArgs:
         assert isinstance(result, Done)
         assert result.result.is_error
         assert "not available" in result.result.content[0].text.lower()  # type: ignore[union-attr]
+
+    def test_filtered_render_template_error_even_when_not_discovered(self) -> None:
+        """Filtered commands report unavailable instead of not found."""
+        group = self._make_group()
+
+        result = group.parse_call_args(
+            "render_template", {"template": "{{ 1 }}"}, user_id=None
+        )
+
+        assert isinstance(result, Done)
+        assert result.result.is_error
+        text = result.result.content[0].text  # type: ignore[union-attr]
+        assert "Command not available: render_template" in text
+        assert "filtered because" in text
+        assert "not found" not in text.lower()
 
 
 class TestCommandFiltering:
@@ -505,6 +577,32 @@ class TestVoluptuousConversion:
         assert isinstance(field, dict)
         assert field["required"] is True
         assert field["type"] == "string"
+
+    @pytest.mark.skipif(
+        not pytest.importorskip("voluptuous", reason="voluptuous not installed"),
+        reason="voluptuous not installed",
+    )
+    def test_excludes_hass_envelope_fields(self) -> None:
+        """voluptuous_to_description excludes id and type envelope fields."""
+        import voluptuous as vol
+
+        schema = vol.Schema(
+            {
+                vol.Required("id"): int,
+                vol.Required("type"): str,
+                vol.Required("entity_ids"): [str],
+            }
+        )
+
+        result = voluptuous_to_description(schema)
+
+        fields = result["fields"]
+        assert isinstance(fields, dict)
+        assert set(fields) == {"entity_ids"}
+        field = fields["entity_ids"]
+        assert isinstance(field, dict)
+        assert field["required"] is True
+        assert field["type"] == "array"
 
     @pytest.mark.skipif(
         not pytest.importorskip("voluptuous", reason="voluptuous not installed"),

@@ -551,7 +551,51 @@ class TestExecuteHassCommandSchemaValidation:
         )
 
         assert result.success is False
-        assert "Validation error" in (result.error or "")
+        error = result.error or ""
+        assert "Validation error for hass/get_entity" in error
+        assert "required key not provided" in error
+        assert "entity_id" in error
+        assert "`arguments` must contain command-specific payload fields only" in error
+        assert "`id` or `type`" in error
+        assert (
+            'mcp__hamster__call(path="hass/get_entity", '
+            'arguments={"entity_id": "<string>"})'
+        ) in error
+
+    async def test_payload_command_injects_envelope_fields(
+        self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
+    ) -> None:
+        """Payload-only params succeed when HA schema requires id/type."""
+        captured_msg = None
+
+        def sync_handler(
+            hass: MagicMock, conn: InternalConnection, msg: dict[str, object]
+        ) -> None:
+            nonlocal captured_msg
+            captured_msg = msg
+            conn.send_result(msg["id"], {"ok": True})  # type: ignore[arg-type]
+
+        schema = vol.Schema(
+            {
+                vol.Required("id"): int,
+                vol.Required("type"): str,
+                vol.Required("entity_ids"): [str],
+            }
+        )
+        mock_hass.data = {"websocket_api": {"get_entries": (sync_handler, schema)}}
+
+        result = await effect_handler.execute_hass_command(
+            command_type="get_entries",
+            params={"entity_ids": ["light.living_room"]},
+            user_id=None,
+        )
+
+        assert result.success is True
+        assert result.data == {"ok": True}
+        assert captured_msg is not None
+        assert captured_msg["id"] == 1
+        assert captured_msg["type"] == "get_entries"
+        assert captured_msg["entity_ids"] == ["light.living_room"]
 
     async def test_schema_false_no_validation(
         self, effect_handler: HamsterEffectHandler, mock_hass: MagicMock
@@ -1186,6 +1230,28 @@ class TestRealHARegistry:
 
         assert result.success is False
         assert "extra keys not allowed" in (result.error or "")
+
+    async def test_entity_registry_get_entries_accepts_payload_only(
+        self,
+        hass_with_websocket_registry: HomeAssistant,
+        admin_user_id: str,
+    ) -> None:
+        """Real get_entries works with payload fields only."""
+        registry = hass_with_websocket_registry.data["websocket_api"]
+        command_type = "config/entity_registry/get_entries"
+        if command_type not in registry:
+            pytest.skip(f"{command_type} is not available in this HA version")
+
+        handler = HamsterEffectHandler(hass_with_websocket_registry)
+
+        result = await handler.execute_hass_command(
+            command_type=command_type,
+            params={"entity_ids": []},
+            user_id=admin_user_id,
+        )
+
+        assert result.success is True
+        assert isinstance(result.data, list)
 
     async def test_supported_features_filtered(
         self, hass_with_websocket_registry: HomeAssistant

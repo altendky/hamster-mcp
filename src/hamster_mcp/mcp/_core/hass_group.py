@@ -8,6 +8,7 @@ and command invocation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 from typing import Any
 
@@ -15,6 +16,12 @@ from .events import Done, FormatHassResponse, HassCommand, ToolEffect
 from .types import CallToolResult, TextContent
 
 _LOGGER = logging.getLogger(__name__)
+
+_HASS_ENVELOPE_FIELDS: frozenset[str] = frozenset({"id", "type"})
+_FILTERED_COMMAND_REASON = (
+    "filtered because it is event/subscription/lifecycle behavior not supported "
+    "by the one-shot call tool"
+)
 
 
 # --- Types ---
@@ -63,10 +70,12 @@ def _get_voluptuous_type(validator: object) -> str:
             return "boolean"
         return "any"
 
-    # Handle All (chain of validators) - extract base type from first
+    # Handle All (chain of validators) - extract first recognizable type.
     if isinstance(validator, vol.All):
-        if validator.validators:
-            return _get_voluptuous_type(validator.validators[0])
+        for child_validator in validator.validators:
+            child_type = _get_voluptuous_type(child_validator)
+            if child_type != "any":
+                return child_type
         return "any"
 
     # Handle Any (union type)
@@ -99,6 +108,13 @@ def _get_voluptuous_type(validator: object) -> str:
     if validator is list or (
         isinstance(validator, type) and issubclass(validator, list)
     ):
+        return "array"
+
+    # Handle voluptuous-style nested/list validators like {"key": str}
+    # and [str].
+    if isinstance(validator, dict):
+        return "object"
+    if isinstance(validator, list):
         return "array"
 
     # Handle Schema (nested)
@@ -226,6 +242,8 @@ def voluptuous_to_description(schema: object) -> dict[str, object]:
         result = _extract_field_info(key, validator)
         if result:
             field_name, field_info = result
+            if field_name in _HASS_ENVELOPE_FIELDS:
+                continue
             fields[field_name] = field_info
 
     return {"fields": fields}
@@ -241,6 +259,96 @@ def _make_error(message: str) -> Done:
             content=(TextContent(text=message),),
             is_error=True,
         )
+    )
+
+
+def _format_filtered_command_message(path: str) -> str:
+    """Format the user-facing message for intentionally filtered commands."""
+    return f"Command not available: {path} ({_FILTERED_COMMAND_REASON})"
+
+
+def _user_field_items(
+    schema: dict[str, object],
+) -> tuple[tuple[str, dict[str, object]], ...]:
+    """Return user-supplied schema fields, excluding HA envelope fields."""
+    fields = schema.get("fields")
+    if not isinstance(fields, dict):
+        return ()
+
+    items: list[tuple[str, dict[str, object]]] = []
+    for field_name, field_info in fields.items():
+        if not isinstance(field_name, str):
+            continue
+        if field_name in _HASS_ENVELOPE_FIELDS:
+            continue
+        if not isinstance(field_info, dict):
+            continue
+        items.append((field_name, field_info))
+    return tuple(items)
+
+
+def _placeholder_for_type(field_type: object) -> object:
+    """Return a concise placeholder value for a schema type name."""
+    if field_type == "string":
+        return "<string>"
+    if field_type == "array":
+        return ["<value>"]
+    if field_type == "object":
+        return {"key": "<value>"}
+    if field_type == "boolean":
+        return True
+    if field_type in {"integer", "number"}:
+        return 0
+    return "<value>"
+
+
+def _required_example_arguments(schema: dict[str, object]) -> dict[str, object]:
+    """Build example arguments for required user-facing fields."""
+    example: dict[str, object] = {}
+    for field_name, field_info in _user_field_items(schema):
+        if field_info.get("required", False) is True:
+            example[field_name] = _placeholder_for_type(field_info.get("type"))
+    return example
+
+
+def _hass_path(command_type: str) -> str:
+    """Return a user-facing hass command path."""
+    if command_type.startswith("hass/"):
+        return command_type
+    return f"hass/{command_type}"
+
+
+def format_hass_call_example(
+    command_type: str, schema: dict[str, object] | None = None
+) -> str:
+    """Format an MCP call example for a hass command."""
+    arguments = _required_example_arguments(schema) if schema is not None else {}
+    return (
+        f'mcp__hamster__call(path="{_hass_path(command_type)}", '
+        f"arguments={json.dumps(arguments)})"
+    )
+
+
+def format_hass_usage_hint(command_type: str, schema: dict[str, object]) -> str | None:
+    """Format a short call example when a hass command has required fields."""
+    if not _required_example_arguments(schema):
+        return None
+    return f"Example: `{format_hass_call_example(command_type, schema)}`"
+
+
+def format_hass_validation_error(
+    command_type: str,
+    original_error: str,
+    schema: dict[str, object] | None = None,
+) -> str:
+    """Format hass validation errors with command-specific call guidance."""
+    command_path = _hass_path(command_type)
+    return (
+        f"Validation error for {command_path}: {original_error}\n\n"
+        "For `hass/` websocket commands, `arguments` must contain "
+        "command-specific payload fields only. Do not include websocket envelope "
+        "fields `id` or `type`; Hamster supplies them internally.\n\n"
+        f"Example: `{format_hass_call_example(command_type, schema)}`"
     )
 
 
@@ -321,9 +429,9 @@ class HassGroup:
                 search_parts.append(info.description)
             schema = info.schema
             if isinstance(schema, dict):
-                fields = schema.get("fields")
-                if isinstance(fields, dict):
-                    search_parts.extend(fields.keys())
+                search_parts.extend(
+                    field_name for field_name, _field_info in _user_field_items(schema)
+                )
             search_text = " ".join(search_parts).lower()
             entries.append((command_type, search_text, info))
 
@@ -410,6 +518,9 @@ class HassGroup:
         Returns:
             Formatted text with command details, or None if not found.
         """
+        if _is_filtered_command(path):
+            return _format_filtered_command_message(path)
+
         info = self._commands.get(path)
         if info is None:
             return None
@@ -424,14 +535,11 @@ class HassGroup:
         # Parameters
         schema = info.schema
         if isinstance(schema, dict):
-            fields = schema.get("fields")
-            if isinstance(fields, dict) and fields:
+            fields = _user_field_items(schema)
+            if fields:
                 lines.append("")
                 lines.append("### Parameters")
-                for field_name, field_info in fields.items():
-                    if not isinstance(field_info, dict):
-                        continue
-
+                for field_name, field_info in fields:
                     required = field_info.get("required", False)
                     field_type = field_info.get("type", "any")
                     desc = field_info.get("description")
@@ -450,6 +558,15 @@ class HassGroup:
                 lines.append("")
                 lines.append("No parameters required.")
 
+            hint = format_hass_usage_hint(path, schema)
+            if hint is not None:
+                lines.append("")
+                lines.append("### Usage")
+                lines.append(hint)
+        else:
+            lines.append("")
+            lines.append("No parameters required.")
+
         return "\n".join(lines)
 
     def schema(self, path: str) -> str | None:
@@ -461,6 +578,9 @@ class HassGroup:
         Returns:
             Formatted schema text, or None if not found.
         """
+        if _is_filtered_command(path):
+            return _format_filtered_command_message(path)
+
         info = self._commands.get(path)
         if info is None:
             return None
@@ -469,12 +589,9 @@ class HassGroup:
 
         schema = info.schema
         if isinstance(schema, dict):
-            fields = schema.get("fields")
-            if isinstance(fields, dict) and fields:
-                for field_name, field_info in fields.items():
-                    if not isinstance(field_info, dict):
-                        continue
-
+            fields = _user_field_items(schema)
+            if fields:
+                for field_name, field_info in fields:
                     required = field_info.get("required", False)
                     field_type = field_info.get("type", "any")
                     desc = field_info.get("description")
@@ -487,6 +604,12 @@ class HassGroup:
                         lines.append(f"  {desc}")
             else:
                 lines.append("No parameters required.")
+
+            hint = format_hass_usage_hint(path, schema)
+            if hint is not None:
+                lines.append("")
+                lines.append("### Usage")
+                lines.append(hint)
         else:
             lines.append("No parameters required.")
 
@@ -511,13 +634,13 @@ class HassGroup:
         Returns:
             HassCommand effect on success, Done with error otherwise.
         """
+        # Check if command is filtered
+        if _is_filtered_command(path):
+            return _make_error(_format_filtered_command_message(path))
+
         # Check if command exists
         if path not in self._commands:
             return _make_error(f"Command not found: {path}")
-
-        # Check if command is filtered
-        if _is_filtered_command(path):
-            return _make_error(f"Command not available: {path}")
 
         # Build the HassCommand effect
         return HassCommand(
