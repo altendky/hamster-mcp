@@ -277,14 +277,15 @@ class TestHassGroupFlow:
 
         explain = hass_group.explain("subscribe_events")
         assert explain is not None
-        assert "Unavailable" in explain
+        assert "Command intentionally unavailable" in explain
+        assert "hass/subscribe_events" in explain
 
         effect = hass_group.parse_call_args("subscribe_events", {}, user_id="test_user")
         assert isinstance(effect, Done)
         assert effect.result.is_error is True
         error_text = effect.result.content[0].text  # type: ignore[union-attr]
-        assert "Command not available" in error_text
-        assert "subscribe_events" in error_text
+        assert "Command intentionally unavailable: hass/subscribe_events" in error_text
+        assert "Reason:" in error_text
 
 
 class TestSupervisorGroupFlow:

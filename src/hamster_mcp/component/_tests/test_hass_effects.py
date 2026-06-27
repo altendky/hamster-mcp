@@ -1280,8 +1280,10 @@ class TestRealHARegistry:
             assert isinstance(effect, Done)
             assert effect.result.is_error is True
             error_text = effect.result.content[0].text  # type: ignore[union-attr]
-            assert "Command not available" in error_text
-            assert command_type in error_text
+            assert (
+                f"Command intentionally unavailable: hass/{command_type}" in error_text
+            )
+            assert "Reason:" in error_text
 
         # Sanity: a normal command is still available.
         assert group.has_command("get_states") is True
