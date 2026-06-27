@@ -31,6 +31,7 @@ _EXCLUDED_TYPES: frozenset[str] = frozenset(
 )
 
 _CODE_BLOCK_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
+_BLANK_LINES_RE = re.compile(r"\n{3,}")
 _COMMENT_RE = re.compile(r"//[^\n]*")
 _H2_RE = re.compile(r"^## (.+)$", re.MULTILINE)
 _H3_RE = re.compile(r"^### (.+)$", re.MULTILINE)
@@ -58,22 +59,23 @@ def parse_websocket_docs(markdown: str) -> dict[str, str]:
 
         if not subsections:
             # No ### subsections — whole body is the description.
-            description = body.strip()
+            description = _sanitize_description(body)
             if not description:
                 continue
             for cmd_type in _extract_command_types(body):
                 if cmd_type not in _EXCLUDED_TYPES and cmd_type not in result:
                     result[cmd_type] = description
         else:
+            parent_description = _sanitize_description(preamble)
             # Assign preamble commands the preamble text.
-            if preamble:
+            if parent_description:
                 for cmd_type in _extract_command_types(preamble):
                     if cmd_type not in _EXCLUDED_TYPES and cmd_type not in result:
-                        result[cmd_type] = preamble
+                        result[cmd_type] = parent_description
 
             # Assign subsection commands their subsection text.
             for _sub_heading, sub_body in subsections:
-                sub_desc = sub_body.strip()
+                sub_desc = _sanitize_description(sub_body) or parent_description
                 if not sub_desc:
                     continue
                 for cmd_type in _extract_command_types(sub_body):
@@ -192,8 +194,36 @@ def _extract_command_types(text: str) -> list[str]:
     return command_types
 
 
+def _sanitize_description(text: str) -> str:
+    """Remove raw HA WebSocket payload examples from docs descriptions.
+
+    Command types are extracted from the original markdown, but enriched MCP
+    descriptions should not retain examples that show Home Assistant's raw
+    WebSocket ``id``/``type`` envelope instead of Hamster's ``path`` and
+    ``arguments`` interface.
+    """
+    return _BLANK_LINES_RE.sub(
+        "\n\n", _CODE_BLOCK_RE.sub(_sanitize_code_block, text)
+    ).strip()
+
+
+def _sanitize_code_block(match: re.Match[str]) -> str:
+    block = match.group(1)
+    if (
+        _top_level_type_from_json(block) is not None
+        or _type_from_regex(block) is not None
+    ):
+        return ""
+    return match.group(0)
+
+
 def _type_from_json(block: str) -> str | None:
     """Try to extract ``"type"`` by parsing the block as JSON."""
+    return _top_level_type_from_json(block)
+
+
+def _top_level_type_from_json(block: str) -> str | None:
+    """Try to extract a top-level ``"type"`` field by parsing JSON."""
     stripped = _COMMENT_RE.sub("", block)
     try:
         data = json.loads(stripped)
