@@ -21,9 +21,11 @@ pre-commit install    # Installs git hooks
 ### OpenCode Orchestration
 
 `mise install` installs pinned OpenCode `1.17.4` and
-`opencode-orchestrator-mcp` `0.7.3`. The `OPENCODE_BINARY` environment variable
-is set from `mise.toml` so the orchestrator launches the pinned OpenCode binary
-instead of whatever is first on `PATH`.
+`opencode-orchestrator-mcp` `0.7.3`. The MCP server is launched through
+`mise exec` so OpenCode resolves the repo-pinned orchestrator binary. The
+`OPENCODE_BINARY` environment variable is set from `mise.toml` so the
+orchestrator launches the pinned OpenCode binary instead of whatever is first on
+`PATH`.
 
 Repo-local OpenCode configuration lives in `opencode.json` and defines the
 OpenAI-backed `delegate` primary agent plus the minimal orchestrator MCP server.

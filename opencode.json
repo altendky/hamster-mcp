@@ -20,6 +20,9 @@
     "orchestrator": {
       "type": "local",
       "command": [
+        "mise",
+        "exec",
+        "--",
         "opencode-orchestrator-mcp"
       ],
       "enabled": true

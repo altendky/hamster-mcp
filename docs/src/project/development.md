@@ -22,6 +22,8 @@ pre-commit install
 The repository includes minimal OpenCode orchestrator support:
 
 - `mise.toml` pins OpenCode `1.17.4` and `opencode-orchestrator-mcp` `0.7.3`.
+- The MCP server command uses `mise exec` so OpenCode resolves the repo-pinned
+  orchestrator binary.
 - `OPENCODE_BINARY` points the orchestrator at the pinned OpenCode binary.
 - `opencode.json` wires only the orchestrator MCP server and defines the
   OpenAI-backed `delegate` primary agent.
