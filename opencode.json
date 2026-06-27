@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "default_agent": "plan",
+  "agent": {
+    "delegate": {
+      "description": "Orchestration-only primary agent for routing planning and build work through orchestrated OpenCode sessions.",
+      "mode": "primary",
+      "prompt": "{file:./.opencode/delegate_sysprompt.md}",
+      "permission": {
+        "*": "deny",
+        "orchestrator_*": "allow",
+        "read": "allow",
+        "todowrite": "allow"
+      }
+    }
+  },
+  "mcp": {
+    "orchestrator": {
+      "type": "local",
+      "command": [
+        "mise",
+        "exec",
+        "--",
+        "opencode-orchestrator-mcp"
+      ],
+      "enabled": true
+    }
+  }
+}
