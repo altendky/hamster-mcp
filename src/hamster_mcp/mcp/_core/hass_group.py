@@ -273,12 +273,22 @@ def _filtered_command_reason(command_type: str) -> str | None:
 
 def _format_blocked_command_message(path: str, reason: str) -> str:
     """Format the user-facing message for intentionally blocked commands."""
-    return f"Command not available: {path} ({reason})"
+    command_path = _hass_path(path)
+    return f"Command intentionally unavailable: {command_path}\nReason: {reason}"
 
 
 def _format_blocked_command_details(path: str, reason: str) -> str:
     """Format detailed unavailable command information."""
-    return "\n".join([f"## {path}", "", "Unavailable.", "", f"Reason: {reason}"])
+    command_path = _hass_path(path)
+    return "\n".join(
+        [
+            f"## {command_path}",
+            "",
+            "Command intentionally unavailable.",
+            "",
+            f"Reason: {reason}",
+        ]
+    )
 
 
 def _user_field_items(
@@ -516,13 +526,18 @@ class HassGroup:
 
         lines = [header, ""]
         for i, (cmd_type, info) in enumerate(matches, 1):
-            availability = " (unavailable)" if info.blocked_reason is not None else ""
+            availability = (
+                " (intentionally unavailable)"
+                if info.blocked_reason is not None
+                else ""
+            )
             if info.description:
                 lines.append(f"{i}. **{cmd_type}**{availability} - {info.description}")
             else:
                 lines.append(f"{i}. **{cmd_type}**{availability}")
             if info.blocked_reason is not None:
-                lines.append(f"   Unavailable: {info.blocked_reason}")
+                lines.append(f"   Command path: `{_hass_path(cmd_type)}`")
+                lines.append(f"   Reason: {info.blocked_reason}")
 
         return "\n".join(lines)
 
