@@ -4,8 +4,7 @@
   "default_agent": "plan",
   "agent": {
     "delegate": {
-      "description": "OpenAI orchestration-only primary agent for routing planning and build work through orchestrated OpenCode sessions.",
-      "model": "openai/gpt-5.5",
+      "description": "Orchestration-only primary agent for routing planning and build work through orchestrated OpenCode sessions.",
       "mode": "primary",
       "prompt": "{file:./.opencode/delegate_sysprompt.md}",
       "permission": {
