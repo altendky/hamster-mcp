@@ -135,8 +135,8 @@ class TestHassGroupSearch:
         result = group.search("subscribe")
         assert "subscribe_events" in result
         assert "intentionally unavailable" in result
-        assert "hass/subscribe_events" in result
-        assert "subscription commands are unavailable" in result
+        assert "Command path: `hass/subscribe_events`" in result
+        assert "Reason: subscription commands are unavailable" in result
 
 
 class TestHassGroupExplain:
@@ -223,10 +223,13 @@ class TestHassGroupExplain:
 
         result = group.explain("subscribe_events")
 
-        assert result is not None
-        assert "hass/subscribe_events" in result
-        assert "Command intentionally unavailable" in result
-        assert "subscription commands are unavailable" in result
+        assert result == (
+            "## hass/subscribe_events\n"
+            "\n"
+            "Command intentionally unavailable.\n"
+            "\n"
+            "Reason: subscription commands are unavailable"
+        )
 
     def test_explain_hides_envelope_fields_and_shows_usage(self) -> None:
         """Explain hides id/type and shows payload-only usage."""
@@ -313,10 +316,13 @@ class TestHassGroupSchema:
 
         result = group.schema("subscribe_events")
 
-        assert result is not None
-        assert "hass/subscribe_events" in result
-        assert "Command intentionally unavailable" in result
-        assert "subscription commands are unavailable" in result
+        assert result == (
+            "## hass/subscribe_events\n"
+            "\n"
+            "Command intentionally unavailable.\n"
+            "\n"
+            "Reason: subscription commands are unavailable"
+        )
 
     def test_schema_hides_envelope_fields_and_shows_usage(self) -> None:
         """Schema hides id/type and shows payload-only usage."""
@@ -450,8 +456,11 @@ class TestHassGroupParseCallArgs:
         assert isinstance(result, Done)
         assert result.result.is_error
         text = result.result.content[0].text  # type: ignore[union-attr]
-        assert "Command intentionally unavailable: hass/subscribe_events" in text
-        assert "filtered because" in text
+        assert text == (
+            "Command intentionally unavailable: hass/subscribe_events\n"
+            "Reason: filtered because it is event/subscription/lifecycle behavior "
+            "not supported by the one-shot call tool"
+        )
 
     def test_filtered_render_template_error_even_when_not_discovered(self) -> None:
         """Filtered commands report unavailable instead of not found."""
@@ -464,8 +473,11 @@ class TestHassGroupParseCallArgs:
         assert isinstance(result, Done)
         assert result.result.is_error
         text = result.result.content[0].text  # type: ignore[union-attr]
-        assert "Command intentionally unavailable: hass/render_template" in text
-        assert "filtered because" in text
+        assert text == (
+            "Command intentionally unavailable: hass/render_template\n"
+            "Reason: filtered because it is event/subscription/lifecycle behavior "
+            "not supported by the one-shot call tool"
+        )
         assert "not found" not in text.lower()
 
 
