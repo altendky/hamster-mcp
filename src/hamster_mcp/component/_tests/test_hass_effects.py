@@ -1256,13 +1256,8 @@ class TestRealHARegistry:
     async def test_supported_features_filtered(
         self, hass_with_websocket_registry: HomeAssistant
     ) -> None:
-        """supported_features is filtered out at the HassGroup layer.
-
-        Direct invocation via ``execute_hass_command`` would still try to
-        call ``set_supported_features`` on the InternalConnection (which we
-        now support), but the user-facing surface (HassGroup.has_command)
-        rejects it so it cannot be reached from MCP.
-        """
+        """Blocked real commands are discoverable but not callable."""
+        from hamster_mcp.mcp._core.events import Done, HassCommand
         from hamster_mcp.mcp._core.hass_group import (
             HassGroup,
             discover_commands,
@@ -1272,11 +1267,26 @@ class TestRealHARegistry:
         commands = discover_commands(registry)
         group = HassGroup.create(commands)
 
-        assert group.has_command("supported_features") is False
-        assert group.has_command("render_template") is False
-        assert group.has_command("fire_event") is False
+        blocked_commands = ["supported_features", "render_template"]
+        if "fire_event" in registry:
+            blocked_commands.append("fire_event")
+
+        for command_type in blocked_commands:
+            assert command_type in registry
+            assert group.has_command(command_type) is True
+
+            effect = group.parse_call_args(command_type, {}, user_id=None)
+
+            assert isinstance(effect, Done)
+            assert effect.result.is_error is True
+            error_text = effect.result.content[0].text  # type: ignore[union-attr]
+            assert "Command not available" in error_text
+            assert command_type in error_text
+
         # Sanity: a normal command is still available.
         assert group.has_command("get_states") is True
+        effect = group.parse_call_args("get_states", {}, user_id=None)
+        assert isinstance(effect, HassCommand)
 
     async def test_unknown_user_rejected_against_real_registry(
         self, hass_with_websocket_registry: HomeAssistant
