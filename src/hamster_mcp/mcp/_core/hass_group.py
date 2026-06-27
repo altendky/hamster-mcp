@@ -35,11 +35,13 @@ class CommandInfo:
         command_type: The command type string (e.g., "get_states")
         schema: JSON-representable schema description
         description: Human-readable description (None until docs enrichment)
+        blocked_reason: Why the command is unavailable for calls, if blocked
     """
 
     command_type: str
     schema: dict[str, object]
     description: str | None = None
+    blocked_reason: str | None = None
 
 
 # --- Voluptuous schema conversion ---
@@ -262,9 +264,21 @@ def _make_error(message: str) -> Done:
     )
 
 
-def _format_filtered_command_message(path: str) -> str:
-    """Format the user-facing message for intentionally filtered commands."""
-    return f"Command not available: {path} ({_FILTERED_COMMAND_REASON})"
+def _filtered_command_reason(command_type: str) -> str | None:
+    """Return the unavailable reason for filtered commands, if filtered."""
+    if _is_filtered_command(command_type):
+        return _FILTERED_COMMAND_REASON
+    return None
+
+
+def _format_blocked_command_message(path: str, reason: str) -> str:
+    """Format the user-facing message for intentionally blocked commands."""
+    return f"Command not available: {path} ({reason})"
+
+
+def _format_blocked_command_details(path: str, reason: str) -> str:
+    """Format detailed unavailable command information."""
+    return "\n".join([f"## {path}", "", "Unavailable.", "", f"Reason: {reason}"])
 
 
 def _user_field_items(
@@ -502,10 +516,13 @@ class HassGroup:
 
         lines = [header, ""]
         for i, (cmd_type, info) in enumerate(matches, 1):
+            availability = " (unavailable)" if info.blocked_reason is not None else ""
             if info.description:
-                lines.append(f"{i}. **{cmd_type}** - {info.description}")
+                lines.append(f"{i}. **{cmd_type}**{availability} - {info.description}")
             else:
-                lines.append(f"{i}. **{cmd_type}**")
+                lines.append(f"{i}. **{cmd_type}**{availability}")
+            if info.blocked_reason is not None:
+                lines.append(f"   Unavailable: {info.blocked_reason}")
 
         return "\n".join(lines)
 
@@ -518,12 +535,12 @@ class HassGroup:
         Returns:
             Formatted text with command details, or None if not found.
         """
-        if _is_filtered_command(path):
-            return _format_filtered_command_message(path)
-
         info = self._commands.get(path)
         if info is None:
             return None
+
+        if info.blocked_reason is not None:
+            return _format_blocked_command_details(path, info.blocked_reason)
 
         lines = [f"## {path}"]
 
@@ -578,12 +595,12 @@ class HassGroup:
         Returns:
             Formatted schema text, or None if not found.
         """
-        if _is_filtered_command(path):
-            return _format_filtered_command_message(path)
-
         info = self._commands.get(path)
         if info is None:
             return None
+
+        if info.blocked_reason is not None:
+            return _format_blocked_command_details(path, info.blocked_reason)
 
         lines = [f"## {path} Parameters", ""]
 
@@ -616,9 +633,7 @@ class HassGroup:
         return "\n".join(lines)
 
     def has_command(self, path: str) -> bool:
-        """Check if a command exists (and is not filtered)."""
-        if _is_filtered_command(path):
-            return False
+        """Check if a command was discovered."""
         return path in self._commands
 
     def parse_call_args(
@@ -634,13 +649,19 @@ class HassGroup:
         Returns:
             HassCommand effect on success, Done with error otherwise.
         """
-        # Check if command is filtered
-        if _is_filtered_command(path):
-            return _make_error(_format_filtered_command_message(path))
-
         # Check if command exists
-        if path not in self._commands:
+        info = self._commands.get(path)
+        if info is None:
+            filtered_reason = _filtered_command_reason(path)
+            if filtered_reason is not None:
+                return _make_error(
+                    _format_blocked_command_message(path, filtered_reason)
+                )
             return _make_error(f"Command not found: {path}")
+
+        blocked_reason = info.blocked_reason or _filtered_command_reason(path)
+        if blocked_reason is not None:
+            return _make_error(_format_blocked_command_message(path, blocked_reason))
 
         # Build the HassCommand effect
         return HassCommand(
@@ -668,10 +689,6 @@ def discover_commands(
     commands: dict[str, CommandInfo] = {}
 
     for command_type, entry in websocket_api_registry.items():
-        # Filter out subscription and auth commands
-        if _is_filtered_command(command_type):
-            continue
-
         # Guard against HA internal registry shape drift. The current shape
         # is ``(handler, schema_or_False)`` but this is private HA state, so
         # we defensively skip entries that no longer match.
@@ -687,11 +704,13 @@ def discover_commands(
 
         # Convert schema
         schema_desc = voluptuous_to_description(schema)
+        blocked_reason = _filtered_command_reason(command_type)
 
         commands[command_type] = CommandInfo(
             command_type=command_type,
             schema=schema_desc,
             description=None,  # No description until docs enrichment
+            blocked_reason=blocked_reason,
         )
 
     return commands

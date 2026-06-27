@@ -420,6 +420,24 @@ class TestEnrichCommands:
         assert result["call_service"].schema == schema
         assert result["call_service"].description == "Call a service."
 
+    def test_preserves_blocked_reason(self) -> None:
+        commands = {
+            "subscribe_events": CommandInfo(
+                command_type="subscribe_events",
+                schema={"fields": {}},
+                blocked_reason="subscription commands are unavailable",
+            ),
+        }
+        descriptions = {"subscribe_events": "Subscribe to events."}
+
+        result = enrich_commands(commands, descriptions)
+
+        assert result["subscribe_events"].description == "Subscribe to events."
+        assert (
+            result["subscribe_events"].blocked_reason
+            == "subscription commands are unavailable"
+        )
+
     def test_overwrites_existing_description(self) -> None:
         commands = {
             "get_states": CommandInfo(

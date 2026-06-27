@@ -161,6 +161,7 @@ class TestHassGroupFlow:
             "get_states": (mock_handler, False),
             "config/entity_registry/list": (mock_handler, False),
             "lovelace/resources": (mock_handler, False),
+            "subscribe_events": (mock_handler, False),
         }
 
         with patch(
@@ -179,6 +180,10 @@ class TestHassGroupFlow:
 
         result = hass_group.search("registry")
         assert "config/entity_registry/list" in result
+
+        blocked_result = hass_group.search("subscribe")
+        assert "subscribe_events" in blocked_result
+        assert "unavailable" in blocked_result.lower()
 
     async def test_explain_hass_command(
         self,
@@ -241,6 +246,42 @@ class TestHassGroupFlow:
         assert isinstance(effect, HassCommand)
         assert effect.command_type == "get_states"
         assert effect.user_id == "test_user"
+
+    async def test_blocked_hass_command_is_discoverable_but_not_callable(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+    ) -> None:
+        """Blocked hass commands appear in docs surfaces but calls fail."""
+        from hamster_mcp.mcp._core.events import Done
+
+        mock_handler = MagicMock()
+        hass.data["websocket_api"] = {
+            "subscribe_events": (mock_handler, False),
+        }
+
+        with patch(
+            "hamster_mcp.component.async_get_all_descriptions",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            await hass.config_entries.async_setup(mock_config_entry.entry_id)
+            await hass.async_block_till_done()
+
+        runtime = mock_config_entry.runtime_data
+        manager = runtime.manager
+
+        hass_group = manager._registry.get("hass")
+        assert hass_group is not None
+        assert hass_group.has_command("subscribe_events") is True
+
+        explain = hass_group.explain("subscribe_events")
+        assert explain is not None
+        assert "Unavailable" in explain
+
+        effect = hass_group.parse_call_args("subscribe_events", {}, user_id="test_user")
+        assert isinstance(effect, Done)
+        assert effect.result.is_error is True
 
 
 class TestSupervisorGroupFlow:

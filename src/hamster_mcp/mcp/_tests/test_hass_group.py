@@ -79,6 +79,12 @@ class TestHassGroupSearch:
                 schema={"fields": {"domain": {"required": True, "type": "string"}}},
                 description="Call a Home Assistant service",
             ),
+            "subscribe_events": CommandInfo(
+                command_type="subscribe_events",
+                schema={"fields": {}},
+                description="Subscribe to events",
+                blocked_reason="subscription commands are unavailable",
+            ),
         }
         return HassGroup.create(commands)
 
@@ -122,6 +128,14 @@ class TestHassGroupSearch:
         result = group.search("nonexistent", path_filter="config")
         assert 'No commands found matching "nonexistent"' in result
         assert "config" in result
+
+    def test_search_marks_blocked_commands_unavailable(self) -> None:
+        """Search includes blocked commands but marks them unavailable."""
+        group = self._make_group()
+        result = group.search("subscribe")
+        assert "subscribe_events" in result
+        assert "unavailable" in result.lower()
+        assert "subscription commands are unavailable" in result
 
 
 class TestHassGroupExplain:
@@ -194,6 +208,25 @@ class TestHassGroupExplain:
         result = group.explain("unknown")
         assert result is None
 
+    def test_explain_blocked_command(self) -> None:
+        """Explain surfaces blocked commands as unavailable."""
+        group = HassGroup.create(
+            {
+                "subscribe_events": CommandInfo(
+                    command_type="subscribe_events",
+                    schema={"fields": {}},
+                    blocked_reason="subscription commands are unavailable",
+                )
+            }
+        )
+
+        result = group.explain("subscribe_events")
+
+        assert result is not None
+        assert "subscribe_events" in result
+        assert "Unavailable" in result
+        assert "subscription commands are unavailable" in result
+
     def test_explain_hides_envelope_fields_and_shows_usage(self) -> None:
         """Explain hides id/type and shows payload-only usage."""
         vol = pytest.importorskip("voluptuous", reason="voluptuous not installed")
@@ -265,6 +298,25 @@ class TestHassGroupSchema:
         result = group.schema("unknown")
         assert result is None
 
+    def test_schema_blocked_command(self) -> None:
+        """Schema surfaces blocked commands as unavailable."""
+        group = HassGroup.create(
+            {
+                "subscribe_events": CommandInfo(
+                    command_type="subscribe_events",
+                    schema={"fields": {}},
+                    blocked_reason="subscription commands are unavailable",
+                )
+            }
+        )
+
+        result = group.schema("subscribe_events")
+
+        assert result is not None
+        assert "subscribe_events" in result
+        assert "Unavailable" in result
+        assert "subscription commands are unavailable" in result
+
     def test_schema_hides_envelope_fields_and_shows_usage(self) -> None:
         """Schema hides id/type and shows payload-only usage."""
         vol = pytest.importorskip("voluptuous", reason="voluptuous not installed")
@@ -321,15 +373,14 @@ class TestHassGroupHasCommand:
         assert group.has_command("get_states") is True
 
     def test_subscribe_filtered(self) -> None:
-        """has_command returns False for subscribe commands."""
+        """has_command returns True for discovered subscribe commands."""
         group = self._make_group_with_filtered()
-        # Even though it's in the dict, it's filtered
-        assert group.has_command("subscribe_events") is False
+        assert group.has_command("subscribe_events") is True
 
     def test_auth_filtered(self) -> None:
-        """has_command returns False for auth commands."""
+        """has_command returns True for discovered auth commands."""
         group = self._make_group_with_filtered()
-        assert group.has_command("auth") is False
+        assert group.has_command("auth") is True
 
     def test_unknown_command(self) -> None:
         """has_command returns False for unknown command."""
@@ -768,18 +819,20 @@ class TestDiscoverCommands:
         result = discover_commands({})
         assert result == {}
 
-    def test_filters_subscribe(self) -> None:
-        """Subscribe commands are filtered out."""
+    def test_marks_subscribe_blocked(self) -> None:
+        """Subscribe commands are discovered but marked blocked."""
         registry = {
             "get_states": (lambda: None, False),
             "subscribe_events": (lambda: None, False),
         }
         result = discover_commands(registry)
         assert "get_states" in result
-        assert "subscribe_events" not in result
+        assert "subscribe_events" in result
+        assert result["get_states"].blocked_reason is None
+        assert result["subscribe_events"].blocked_reason is not None
 
-    def test_filters_auth(self) -> None:
-        """Auth commands are filtered out."""
+    def test_marks_auth_blocked(self) -> None:
+        """Auth commands are discovered but marked blocked."""
         registry = {
             "get_states": (lambda: None, False),
             "auth": (lambda: None, False),
@@ -787,8 +840,10 @@ class TestDiscoverCommands:
         }
         result = discover_commands(registry)
         assert "get_states" in result
-        assert "auth" not in result
-        assert "auth/sign_path" not in result
+        assert "auth" in result
+        assert "auth/sign_path" in result
+        assert result["auth"].blocked_reason is not None
+        assert result["auth/sign_path"].blocked_reason is not None
 
     def test_schema_false_handled(self) -> None:
         """Commands with schema=False have empty fields."""

@@ -109,6 +109,7 @@ def enrich_commands(
                 command_type=info.command_type,
                 schema=info.schema,
                 description=desc,
+                blocked_reason=info.blocked_reason,
             )
         else:
             enriched[cmd_type] = info
