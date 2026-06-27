@@ -13,10 +13,24 @@ For project requirements, architecture, and conventions, see:
 ### Setup
 
 ```bash
-mise install          # Installs Python 3.14, uv, pre-commit
+mise install          # Installs Python 3.14, uv, pre-commit, OpenCode, orchestrator MCP
 uv sync --extra dev   # Creates .venv, installs package + dev deps
 pre-commit install    # Installs git hooks
 ```
+
+### OpenCode Orchestration
+
+`mise install` installs pinned OpenCode `1.17.4` and
+`opencode-orchestrator-mcp` `0.7.3`. The MCP server is launched through
+`mise exec` so OpenCode resolves the repo-pinned orchestrator binary. The
+`OPENCODE_BINARY` environment variable is set from `mise.toml` so the
+orchestrator launches the pinned OpenCode binary instead of whatever is first on
+`PATH`.
+
+Repo-local OpenCode configuration lives in `opencode.json` and defines the
+orchestration-only `delegate` primary agent plus the minimal orchestrator MCP server.
+After changing `opencode.json` or files under `.opencode/`, quit and restart
+OpenCode so the updated configuration is loaded.
 
 ### Running checks
 
