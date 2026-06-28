@@ -59,24 +59,6 @@ version = "0.7.3"
 backend = "github:allisoneer/agentic_auxilary"
 
 [tools.opencode-orchestrator-mcp.options]
-asset_pattern = "opencode-orchestrator-mcp-aarch64-unknown-linux-gnu.tar.xz"
-version_prefix = "opencode-orchestrator-mcp-v"
-
-[tools.opencode-orchestrator-mcp."platforms.linux-arm64"]
-checksum = "sha256:659d9e77d122216cda8c047eb9517e0b2de4480d4365190575049fd344a578c7"
-url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/opencode-orchestrator-mcp-aarch64-unknown-linux-gnu.tar.xz"
-url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841765"
-
-[tools.opencode-orchestrator-mcp."platforms.linux-arm64-musl"]
-checksum = "sha256:659d9e77d122216cda8c047eb9517e0b2de4480d4365190575049fd344a578c7"
-url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/opencode-orchestrator-mcp-aarch64-unknown-linux-gnu.tar.xz"
-url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841765"
-
-[[tools.opencode-orchestrator-mcp]]
-version = "0.7.3"
-backend = "github:allisoneer/agentic_auxilary"
-
-[tools.opencode-orchestrator-mcp.options]
 asset_pattern = "opencode-orchestrator-mcp-x86_64-unknown-linux-gnu.tar.xz"
 version_prefix = "opencode-orchestrator-mcp-v"
 
@@ -89,44 +71,6 @@ url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/ass
 checksum = "sha256:8324e0075f7b9304d59baf2831561dad02f6118c9fcb109fa4c482a6c543c03d"
 url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/opencode-orchestrator-mcp-x86_64-unknown-linux-gnu.tar.xz"
 url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841777"
-
-[[tools.opencode-orchestrator-mcp]]
-version = "0.7.3"
-backend = "github:allisoneer/agentic_auxilary"
-
-[tools.opencode-orchestrator-mcp.options]
-asset_pattern = "opencode-orchestrator-mcp-aarch64-apple-darwin.tar.xz"
-version_prefix = "opencode-orchestrator-mcp-v"
-
-[tools.opencode-orchestrator-mcp."platforms.macos-arm64"]
-checksum = "sha256:1761a21706ec903cd3211bc6c07b972a9a45c65e5306560573b2d2e746ebefa7"
-url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/opencode-orchestrator-mcp-aarch64-apple-darwin.tar.xz"
-url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841768"
-
-[[tools.opencode-orchestrator-mcp]]
-version = "0.7.3"
-backend = "github:allisoneer/agentic_auxilary"
-
-[tools.opencode-orchestrator-mcp.options]
-asset_pattern = "opencode-orchestrator-mcp-x86_64-apple-darwin.tar.xz"
-version_prefix = "opencode-orchestrator-mcp-v"
-
-[tools.opencode-orchestrator-mcp."platforms.macos-x64"]
-checksum = "sha256:9cf09df9ff5da6d5dc3ec588959f2b0eb6dabb1672244de709701e66887f48ff"
-url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/opencode-orchestrator-mcp-x86_64-apple-darwin.tar.xz"
-url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841773"
-
-[[tools.opencode-orchestrator-mcp]]
-version = "0.7.3"
-backend = "github:allisoneer/agentic_auxilary"
-
-[tools.opencode-orchestrator-mcp.options]
-version_prefix = "opencode-orchestrator-mcp-v"
-
-[tools.opencode-orchestrator-mcp."platforms.windows-x64"]
-checksum = "sha256:285b29ddc159d9160a19cd45a2ea50b2569869949551a0efbe383349344bc87a"
-url = "https://github.com/allisoneer/agentic_auxilary/releases/download/opencode-orchestrator-mcp-v0.7.3/source.tar.gz"
-url_api = "https://api.github.com/repos/allisoneer/agentic_auxilary/releases/assets/456841785"
 
 [[tools."pipx:pre-commit"]]
 version = "4.5.1"
