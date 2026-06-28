@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from hamster_mcp.mcp._core.docs_enrichment import (
     _extract_command_types,
+    _sanitize_description,
     _split_h2_sections,
     _split_h3_subsections,
     _type_from_json,
@@ -238,6 +239,35 @@ class TestExtractCommandTypes:
 
 
 # ---------------------------------------------------------------------------
+# _sanitize_description
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeDescription:
+    """Tests for _sanitize_description."""
+
+    def test_removes_raw_payload_envelope_code_block(self) -> None:
+        text = (
+            "Before.\n\n"
+            '```json\n{\n  "id": 19,\n  "type": "get_states"\n}\n```\n\n'
+            "After."
+        )
+
+        result = _sanitize_description(text)
+
+        assert result == "Before.\n\nAfter."
+
+    def test_preserves_non_envelope_json_with_type_field(self) -> None:
+        text = 'Before.\n\n```json\n{\n  "type": "string"\n}\n```\n\nAfter.'
+
+        result = _sanitize_description(text)
+
+        assert '"type": "string"' in result
+        assert result.startswith("Before.")
+        assert result.endswith("After.")
+
+
+# ---------------------------------------------------------------------------
 # parse_websocket_docs
 # ---------------------------------------------------------------------------
 
@@ -256,6 +286,85 @@ class TestParseWebsocketDocs:
         result = parse_websocket_docs(md)
         assert "get_states" in result
         assert "dump of all states" in result["get_states"]
+        assert '"type": "get_states"' not in result["get_states"]
+        assert '"type": "result"' not in result["get_states"]
+
+    def test_removes_request_response_and_event_payload_examples(self) -> None:
+        md = (
+            "## Subscribe to events\n\n"
+            "Subscribe to all events.\n\n"
+            '```json\n{\n  "id": 18,\n  "type": "subscribe_events"\n}\n```\n\n'
+            "The server responds with success.\n\n"
+            '```json\n{\n  "id": 18,\n  "type": "result",\n'
+            '  "success": true\n}\n```\n\n'
+            "Events are forwarded after subscribing.\n\n"
+            '```json\n{\n  "id": 18,\n  "type": "event",\n'
+            '  "event": {"event_type": "state_changed"}\n}\n```\n'
+        )
+
+        result = parse_websocket_docs(md)
+
+        assert result == {
+            "subscribe_events": (
+                "Subscribe to all events.\n\n"
+                "The server responds with success.\n\n"
+                "Events are forwarded after subscribing."
+            ),
+        }
+
+    def test_preserves_surrounding_prose_tables_and_non_payload_code(self) -> None:
+        md = (
+            "## Calling a service\n\n"
+            "Calls a service.\n\n"
+            "| Key | Description |\n"
+            "| --- | --- |\n"
+            "| domain | Service domain. |\n\n"
+            '```json\n{\n  "id": 24,\n  "type": "call_service",\n'
+            '  "domain": "light"\n}\n```\n\n'
+            "Useful selector-like object example:\n\n"
+            '```json\n{\n  "entity_id": "light.kitchen"\n}\n```\n'
+        )
+
+        result = parse_websocket_docs(md)
+
+        description = result["call_service"]
+        assert "Calls a service" in description
+        assert "| domain | Service domain. |" in description
+        assert "Useful selector-like object example" in description
+        assert '"entity_id": "light.kitchen"' in description
+        assert '"type": "call_service"' not in description
+
+    def test_extracts_command_type_from_original_raw_payload(self) -> None:
+        md = (
+            "## Calling a service\n\n"
+            "Calls a service with optional data.\n\n"
+            "```json\n{\n"
+            '  "id": 24,\n'
+            '  "type": "call_service",\n'
+            '  "domain": "light",\n'
+            '  "service": "turn_on"\n'
+            "  // Optional service data\n"
+            '  "service_data": {}\n'
+            "}\n```\n"
+        )
+
+        result = parse_websocket_docs(md)
+
+        assert result == {"call_service": "Calls a service with optional data."}
+
+    def test_request_only_subsection_falls_back_to_parent_prose(self) -> None:
+        md = (
+            "## Calling a service\n\n"
+            "Calls a service.\n\n"
+            "### Request\n\n"
+            '```json\n{\n  "id": 24,\n  "type": "call_service"\n}\n```\n\n'
+            "### Response\n\n"
+            '```json\n{\n  "id": 24,\n  "type": "result"\n}\n```\n'
+        )
+
+        result = parse_websocket_docs(md)
+
+        assert result == {"call_service": "Calls a service."}
 
     def test_excludes_non_command_sections(self) -> None:
         md = (
