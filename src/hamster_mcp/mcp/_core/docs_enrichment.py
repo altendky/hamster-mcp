@@ -210,7 +210,7 @@ def _sanitize_description(text: str) -> str:
 def _sanitize_code_block(match: re.Match[str]) -> str:
     block = match.group(1)
     if (
-        _top_level_type_from_json(block) is not None
+        _payload_envelope_type_from_json(block) is not None
         or _type_from_regex(block) is not None
     ):
         return ""
@@ -231,6 +231,21 @@ def _top_level_type_from_json(block: str) -> str | None:
         return None
 
     if not isinstance(data, dict):
+        return None
+
+    cmd_type = data.get("type")
+    return cmd_type if isinstance(cmd_type, str) else None
+
+
+def _payload_envelope_type_from_json(block: str) -> str | None:
+    """Try to extract ``"type"`` from a raw HA WebSocket payload envelope."""
+    stripped = _COMMENT_RE.sub("", block)
+    try:
+        data = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    if not isinstance(data, dict) or "id" not in data:
         return None
 
     cmd_type = data.get("type")

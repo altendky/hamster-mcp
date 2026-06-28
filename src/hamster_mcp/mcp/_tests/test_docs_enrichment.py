@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from hamster_mcp.mcp._core.docs_enrichment import (
     _extract_command_types,
+    _sanitize_description,
     _split_h2_sections,
     _split_h3_subsections,
     _type_from_json,
@@ -235,6 +236,35 @@ class TestExtractCommandTypes:
 
     def test_no_code_blocks(self) -> None:
         assert _extract_command_types("Just text, no code blocks.") == []
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_description
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeDescription:
+    """Tests for _sanitize_description."""
+
+    def test_removes_raw_payload_envelope_code_block(self) -> None:
+        text = (
+            "Before.\n\n"
+            '```json\n{\n  "id": 19,\n  "type": "get_states"\n}\n```\n\n'
+            "After."
+        )
+
+        result = _sanitize_description(text)
+
+        assert result == "Before.\n\nAfter."
+
+    def test_preserves_non_envelope_json_with_type_field(self) -> None:
+        text = 'Before.\n\n```json\n{\n  "type": "string"\n}\n```\n\nAfter.'
+
+        result = _sanitize_description(text)
+
+        assert '"type": "string"' in result
+        assert result.startswith("Before.")
+        assert result.endswith("After.")
 
 
 # ---------------------------------------------------------------------------
