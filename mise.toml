@@ -3,7 +3,7 @@
 # release (2026.3.x requires Python 3.14).
 python = "3.14"
 uv = "latest"
-"pipx:pre-commit" = "4.5.1"
+"pipx:pre-commit" = "4.6.0"
 # Provides cargo-binstall so the cargo backend can download pre-built binaries
 # instead of compiling from source.
 cargo-binstall = "latest"
