@@ -5,7 +5,7 @@ version = "1.17.6"
 backend = "aqua:cargo-bins/cargo-binstall"
 
 [[tools."cargo:lychee"]]
-version = "0.23.0"
+version = "0.24.2"
 backend = "cargo:lychee"
 
 [[tools."pipx:pre-commit"]]
