@@ -72,7 +72,7 @@ exclude = [
 extensions = ["md"]
 
 # Enable fragment/anchor checking
-include_fragments = true
+include_fragments = "anchor-only"
 
 # Exclude mail addresses from checking (avoid false positives)
 include_mail = false
