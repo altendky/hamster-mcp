@@ -51,7 +51,7 @@ version = "0.24.2"
 backend = "cargo:lychee"
 
 [[tools."pipx:pre-commit"]]
-version = "4.6.2"
+version = "4.7.0"
 backend = "pipx:pre-commit"
 
 [[tools.python]]
