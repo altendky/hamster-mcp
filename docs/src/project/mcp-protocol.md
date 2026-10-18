@@ -110,5 +110,5 @@ HA automatically validates Bearer tokens before the request reaches our code.
 
 No separate OAuth setup, no API tokens, no secret URLs.
 The MCP client simply uses a
-[Long-Lived Access Token](https://developers.home-assistant.io/docs/auth_api/#long-lived-access-token)
+[Long-Lived Access Token](https://contributors.home-assistant.io/core/internals/auth-api/#long-lived-access-tokens)
 from HA.
