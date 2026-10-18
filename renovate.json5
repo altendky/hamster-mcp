@@ -15,7 +15,41 @@
     "enabled": true
   },
 
+  // Preserve recommended exclusions and ignore generated Mise package metadata.
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    "**/.mise/locks/**"
+  ],
+
   "packageRules": [
+    {
+      "description": "Keep Python on the selected minor release",
+      "matchManagers": [
+        "mise"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
+      "allowedVersions": "/^3\\.14(?:\\.|$)/"
+    },
+    {
+      "description": "Changing the supported Python minimum is a manual decision",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "enabled": false
+    },
+
     // After bumping a mise tool version, re-lock just that tool so mise.lock
     // stays in sync with mise.toml.
     {
