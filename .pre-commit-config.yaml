@@ -23,7 +23,9 @@ repos:
   - repo: https://github.com/lycheeverse/lychee
     rev: lychee-v0.24.2
     hooks:
-      - id: lychee
+      # Use the matching mise pin; the auto-installer's Git tag detection breaks
+      # when a commit hook inherits the linked worktree's GIT_DIR.
+      - id: lychee-system
         args: ["--no-progress", "--config=.lychee.toml"]
         types: [markdown]
 
